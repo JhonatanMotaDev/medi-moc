@@ -1,0 +1,16 @@
+# Local datasets and generated data
+/data/
+/datasets/
+
+# Local secrets and credentials
+.env
+.env.*
+!.env.example
+.secrets/
+secrets/
+credentials.*
+*_credentials.*
+*.pem
+*.key
+*.p12
+*.pfx

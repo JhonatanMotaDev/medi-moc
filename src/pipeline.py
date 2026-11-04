@@ -4,11 +4,12 @@ import argparse
 from pathlib import Path
 
 from .config import Config, PROCESSED_DIR, RAW_DIR
-from .extract import ExtractedResponse, fetch_stock, save_raw
-from .load import save_processed
-from .normalize import normalize
-from .parse import parse_response
-from .quality import quality_report
+from .extract.source import ExtractedResponse, save_raw
+from .extract.sources import DEFAULT_STOCK_SOURCE
+from .load.load import save_processed
+from .transform.normalize import normalize
+from .transform.parse import parse_response
+from .transform.quality import quality_report
 
 
 def run(fixture: str | None = None) -> None:
@@ -25,7 +26,7 @@ def run(fixture: str | None = None) -> None:
             status_code=200,
         )
     else:
-        result = fetch_stock(config)
+        result = DEFAULT_STOCK_SOURCE.fetch(config)
 
     raw_path = save_raw(result, RAW_DIR)
     print(f"[extract] status={result.status_code}")

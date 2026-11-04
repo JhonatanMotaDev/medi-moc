@@ -9,6 +9,9 @@ MUNICIPIO = "3143302"
 DATA_DIR = Path("data")
 RAW_DIR = DATA_DIR / "raw"
 PROCESSED_DIR = DATA_DIR / "processed"
+AVAILABLE_DIR = DATA_DIR / "avaliable"
+PUBLIC_SNAPSHOT = PROCESSED_DIR / "public_snapshot.json"
+COLLECTION_STATUS = PROCESSED_DIR / "collection_status.json"
 
 @dataclass(frozen=True)
 class Config:

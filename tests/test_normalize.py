@@ -1,7 +1,7 @@
 import pandas as pd
 
-from src.normalize import normalize
-from src.parse import parse_response
+from src.transform.normalize import normalize
+from src.transform.parse import parse_response
 
 
 def test_parse_and_normalize_preserves_identifiers_and_brazilian_numbers():

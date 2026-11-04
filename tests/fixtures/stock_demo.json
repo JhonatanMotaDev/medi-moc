@@ -1,0 +1,39 @@
+[
+  {
+    "id_produto": 1001,
+    "nomproduto": "DIPIRONA SÓDICA 500 MG",
+    "unidade_fornecimento": "COMPRIMIDO",
+    "qdeestoque": "12.0",
+    "estoque_unidade": [
+      {
+        "codunidade": 1,
+        "nomfantasia": "UBS São Judas",
+        "numtelefone": "38 2211-4461",
+        "endereco_unidade": "Rua Padre Vieira, 620",
+        "qdeestoque": 12
+      },
+      {
+        "codunidade": 2,
+        "nomfantasia": "UBS Maracanã",
+        "numtelefone": "38 2211-4470",
+        "endereco_unidade": "Rua Exemplo, 100",
+        "qdeestoque": 0
+      }
+    ]
+  },
+  {
+    "id_produto": 1002,
+    "nomproduto": "PARACETAMOL 750 MG",
+    "unidade_fornecimento": "COMPRIMIDO",
+    "qdeestoque": "4.0",
+    "estoque_unidade": [
+      {
+        "codunidade": 1,
+        "nomfantasia": "UBS São Judas",
+        "numtelefone": "38 2211-4461",
+        "endereco_unidade": "Rua Padre Vieira, 620",
+        "qdeestoque": 4
+      }
+    ]
+  }
+]

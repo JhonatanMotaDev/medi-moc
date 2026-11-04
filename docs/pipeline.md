@@ -1,26 +1,32 @@
 # Pipeline ETL: Vivver Estoque MVP
 
-Este documento descreve o comportamento presente no repositório. A fonte é o portal Vivver configurado para o município `3143302`; o código adiciona a descrição fixa `Montes Claros` e UF `MG` apenas na rota de normalização tabular (`src.normalize`).
+Este documento descreve o comportamento presente no repositório. A fonte é o portal Vivver configurado para o município `3143302`; o código adiciona a descrição fixa `Montes Claros` e UF `MG` apenas na rota de normalização tabular (`src.transform.normalize`).
 
 ## Visão do fluxo
 
 ```text
 Vivver
   ↓
-src.extract.fetch_stock
+src.extract.source.fetch_stock
   ↓
-src.extract.save_raw
+src.extract.source.save_raw
   ↓
 data/raw/*.txt
   ↓
-src.transform (execução independente)
+src.transform.transform (execução independente)
   ↓
 dim_produto.csv + dim_unidade.csv + fato_estoque.csv + transform_log.json
   ↓
 [Load em destino externo — não implementado]
 ```
 
-O repositório também tem a rota `src.pipeline`, que usa `parse.py`, `normalize.py`, `quality.py` e `load.py`. Ela preserva o raw, mas escreve uma representação tabular diferente em `estoque_montes_claros.csv` e, se o suporte estiver instalado, em `estoque_montes_claros.parquet`. Como `src.pipeline` não invoca `src.transform`, as duas rotas não devem ser tratadas como uma única execução encadeada.
+O repositório também tem a rota `src.pipeline`, que usa `src.transform.parse`, `src.transform.normalize`, `src.transform.quality` e `src.load.load`. Ela preserva o raw, mas escreve uma representação tabular diferente em `estoque_montes_claros.csv` e, se o suporte estiver instalado, em `estoque_montes_claros.parquet`. Como `src.pipeline` não invoca `src.transform.transform`, as duas rotas não devem ser tratadas como uma única execução encadeada.
+
+### Fontes adicionais
+
+`src.extract.sources` define o contrato mínimo de uma fonte de estoque (`source_id`, `display_name` e `fetch`). O `VivverSource` é a implementação padrão e a única fonte de estoque publicada pelo MVP. Esse ponto de extensão não consolida dados de fontes diferentes: cada adaptador futuro deve produzir uma resposta que passe pela validação do snapshot e preservar sua própria origem e horário de coleta.
+
+Cadastros de unidades, mapas, compras públicas ou confirmações manuais podem complementar a aplicação, mas não devem ser interpretados como quantidade disponível sem uma regra e autorização específicas. Em caso de divergência, a aplicação deve mostrar as fontes separadamente ou rejeitar a publicação; não deve somar quantidades nem escolher silenciosamente a fonte mais favorável.
 
 ## Extract
 
@@ -99,19 +105,19 @@ Exemplo encurtado e anonimizado, mantendo a estrutura da captura:
 ]
 ```
 
-O sufixo `.txt` não determina o formato: para a transformação dimensional, o conteúdo precisa ser uma lista JSON. `src.transform` faz `json.load()` e rejeita uma raiz que não seja lista.
+O sufixo `.txt` não determina o formato: para a transformação dimensional, o conteúdo precisa ser uma lista JSON. `src.transform.transform` faz `json.load()` e rejeita uma raiz que não seja lista.
 
 ## Transform dimensional
 
 ### Execução
 
 ```bash
-python -m src.transform data/raw/vivver_estoque_2026-09-22T131443016020+0000.txt data/processed
+python -m src.transform.transform data/raw/vivver_estoque_2026-09-22T131443016020+0000.txt data/processed
 ```
 
 Os dois argumentos posicionais são, nesta ordem, o arquivo JSON/TXT de entrada e o diretório de saída. O módulo não chama `fetch_stock` nem escolhe automaticamente o arquivo raw mais recente; a seleção é responsabilidade de quem executa o comando.
 
-### Etapas executadas por `src.transform`
+### Etapas executadas por `src.transform.transform`
 
 1. Abre o arquivo em UTF-8 e faz o parsing JSON.
 2. Valida a raiz, os campos obrigatórios do produto e os campos obrigatórios de cada registro em `estoque_unidade`.
@@ -195,7 +201,7 @@ O log tem `arquivo_entrada`, `status` e `metricas`. As métricas incluem contage
 
 ### Saídas da rota tabular adicional
 
-`src.pipeline` não é a transformação dimensional acima. Depois de `parse_response`, `normalize` renomeia colunas conhecidas, limpa textos, preserva identificadores como texto, tenta converter quantidades, adiciona metadados da fonte e remove linhas exatamente duplicadas. `quality_report.csv` descreve, por coluna, tipo, quantidade de linhas, nulos e valores distintos. `src.load.save_processed` grava `estoque_montes_claros.csv` e tenta gravar o Parquet; se o motor Parquet não estiver disponível, captura apenas `ImportError` e mantém o CSV.
+`src.pipeline` não é a transformação dimensional acima. Depois de `parse_response`, `normalize` renomeia colunas conhecidas, limpa textos, preserva identificadores como texto, tenta converter quantidades, adiciona metadados da fonte e remove linhas exatamente duplicadas. `quality_report.csv` descreve, por coluna, tipo, quantidade de linhas, nulos e valores distintos. `src.load.load.save_processed` grava `estoque_montes_claros.csv` e tenta gravar o Parquet; se o motor Parquet não estiver disponível, captura apenas `ImportError` e mantém o CSV.
 
 O nome `load.py` nessa rota significa escrita de arquivos processados. Ele não realiza carga em banco, serviço ou outro destino externo.
 
@@ -213,13 +219,13 @@ O nome `load.py` nessa rota significa escrita de arquivos processados. Ele não 
 
 Quando há regras acumuladas inválidas, a exceção lista no máximo 20 mensagens e acrescenta `...` se houver outras. Como os arquivos são gravados somente depois de `transform` concluir, uma falha de validação impede a criação das saídas daquela execução.
 
-`src.quality.quality_report` também existe na rota tabular: ele apenas calcula perfil de coluna (tipo, linhas, nulos, percentual de nulos e distintos). Não impõe limiares nem bloqueia o processamento.
+`src.transform.quality.quality_report` também existe na rota tabular: ele apenas calcula perfil de coluna (tipo, linhas, nulos, percentual de nulos e distintos). Não impõe limiares nem bloqueia o processamento.
 
 ## Dependências e testes existentes
 
 `requirements.txt` declara `requests`, `pandas`, `beautifulsoup4`, `lxml` e `pyarrow`. `requests` atende à coleta; `pandas`, Beautiful Soup e lxml são usados na rota tabular; `pyarrow` permite a escrita Parquet nessa rota. `transform.py` usa somente módulos da biblioteca padrão.
 
-O teste em `tests/test_normalize.py` cobre a leitura de tabela HTML, a preservação de identificadores com zero à esquerda, a interpretação de `1.250` como 1250 e a remoção de duplicatas exatas. Não há teste automatizado da transformação dimensional em `src.transform` no repositório atual.
+O teste em `tests/test_normalize.py` cobre a leitura de tabela HTML, a preservação de identificadores com zero à esquerda, a interpretação de `1.250` como 1250 e a remoção de duplicatas exatas. Não há teste automatizado da transformação dimensional em `src.transform.transform` no repositório atual.
 
 ## Estado atual e futuras evoluções
 
@@ -228,7 +234,7 @@ O teste em `tests/test_normalize.py` cobre a leitura de tabela HTML, a preserva�
 | Extract | Implementado |
 | Raw storage | Implementado |
 | Transform dimensional | Implementado |
-| Validações dimensionais | Implementadas conforme `src.transform` |
+| Validações dimensionais | Implementadas conforme `src.transform.transform` |
 | Escrita de arquivos processados pela rota tabular | Implementada |
 | Load em destino externo | Não implementado |
 

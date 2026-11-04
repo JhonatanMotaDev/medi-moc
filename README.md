@@ -2,16 +2,18 @@
 
 Pipeline local para coletar e transformar dados públicos de estoque de medicamentos de Montes Claros disponíveis no portal Vivver. O projeto preserva a resposta recebida em `data/raw/` e contém uma transformação dimensional que produz tabelas de produto, unidade e estoque.
 
+O objetivo de evolução é a **Plataforma de Consulta da Disponibilidade de Medicamentos na Rede Pública de Saúde**, uma ferramenta pública que complemente os canais oficiais com informações claras e atualizadas. O contexto do produto, público, princípios e direção do MVP estão em [docs/context.md](docs/context.md); orientações para agentes de IA estão em [docs/agents.md](docs/agents.md).
+
 ## Arquitetura
 
 ```text
 Portal Vivver
     ↓
-Extract (`src.extract`)
+Extract (`src.extract.source`)
     ↓
 data/raw/*.txt
     ↓
-Transform dimensional (`src.transform`)
+Transform dimensional (`src.transform.transform`)
     ↓
 data/processed/dim_produto.csv
 data/processed/dim_unidade.csv
@@ -27,7 +29,7 @@ Load em destino externo [ainda não implementado]
 - **Processed** é a camada de arquivos gerados para consumo local.
 - **Load** para banco de dados, API ou outro destino externo não existe neste repositório.
 
-> Há também o executor `src.pipeline`, com `src.parse`, `src.normalize`, `src.quality` e `src.load`. Ele gera `estoque_montes_claros.csv`, Parquet quando disponível e `quality_report.csv`. Essa é uma saída tabular normalizada adicional; ele **não** chama `src.transform` e não produz as três tabelas dimensionais.
+> Há também o executor `src.pipeline`, com `src.transform.parse`, `src.transform.normalize`, `src.transform.quality` e `src.load.load`. Ele gera `estoque_montes_claros.csv`, Parquet quando disponível e `quality_report.csv`. Essa é uma saída tabular normalizada adicional; ele **não** chama `src.transform.transform` e não produz as três tabelas dimensionais.
 
 ## Estrutura do projeto
 
@@ -48,15 +50,22 @@ vivver-estoque-mvp/
 ├── docs/
 │   └── pipeline.md
 ├── src/
-│   ├── __init__.py
 │   ├── config.py
-│   ├── extract.py
-│   ├── transform.py
-│   ├── parse.py
-│   ├── normalize.py
-│   ├── quality.py
-│   ├── load.py
-│   └── pipeline.py
+│   ├── extract/
+│   │   ├── collector.py
+│   │   ├── source.py
+│   │   └── sources.py
+│   ├── transform/
+│   │   ├── transform.py
+│   │   ├── snapshot.py
+│   │   ├── parse.py
+│   │   ├── normalize.py
+│   │   └── quality.py
+│   ├── load/
+│   │   └── load.py
+│   ├── pipeline.py
+│   ├── web.py
+│   └── template/stock.html
 ├── tests/
 │   ├── fixtures/estoque_sample.html
 │   └── test_normalize.py
@@ -65,16 +74,82 @@ vivver-estoque-mvp/
 
 ## Executar localmente
 
-Instale as dependências declaradas:
+Requer Python 3.10 ou superior. No PowerShell, crie e ative um ambiente virtual e instale as dependências:
 
 ```bash
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
 python -m pip install -r requirements.txt
 ```
+
+Para carregar a demonstração e iniciar a interface sem consultar a fonte externa:
+
+```bash
+python -m src.extract.collector --fixture tests/fixtures/stock_demo.json
+python -m src.web
+```
+
+Abra [http://127.0.0.1:8000](http://127.0.0.1:8000). O fixture contém dados fictícios e não representa o estoque atual.
+
+### Plataforma de consulta (MVP)
+
+Se já houver uma captura JSON `vivver_estoque_*.txt` em `data/raw/`, a interface consegue carregá-la diretamente. Para obter dados novos ou criar uma captura quando não houver nenhuma válida, faça uma coleta:
+
+```bash
+python -m src.extract.collector
+```
+
+O coletor consulta o endpoint configurado do Vivver com timeout e retentativas limitadas, guarda a resposta bruta em `data/raw/`, valida o contrato e publica atomicamente `data/processed/public_snapshot.json`. A interface lê diretamente a captura JSON `.txt` válida mais recente em `data/raw/`, pela data embutida no nome do arquivo; ignora `.txt` que não tenham o formato JSON esperado e ignora também uma captura gerada por `--fixture`, identificada pelo status da coleta mesmo que tenha timestamp no nome. Se a captura mais recente tiver menos da metade dos medicamentos de uma captura válida anterior com pelo menos 50 produtos, a interface mantém a maior captura e avisa que ela pode estar desatualizada. O snapshot processado é usado como fallback se nenhuma captura bruta válida estiver disponível. O resultado de cada tentativa fica em `data/processed/collection_status.json`. Se uma coleta falhar, o snapshot válido anterior é preservado e a interface sinaliza a falha.
+
+As capturas preexistentes são históricas: a interface usa o timestamp do nome do arquivo (ou, se ausente, a data de modificação) como horário da captura, não como confirmação de atualização do estoque na unidade. Execute uma coleta nova antes de divulgar os resultados.
+
+O MVP publica apenas o Vivver como fonte de estoque. A coleta usa o adaptador `src.extract.sources.VivverSource`, que mantém a identidade da fonte separada da validação do snapshot. Isso permite adicionar fontes autorizadas no futuro sem somar estoques ou escolher silenciosamente entre respostas divergentes; cadastros, mapas e compras devem continuar como fontes complementares, não como prova de disponibilidade.
+
+Para depurar qual arquivo a interface selecionará, quantos registros foram lidos e por que capturas foram rejeitadas, rode:
+
+```bash
+python -m src.diagnostics
+```
+
+O diagnóstico informa apenas nomes de arquivos, status e contagens; não despeja os registros de estoque no terminal.
+
+No diagnóstico, **“válida estruturalmente”** significa que o arquivo passou pelo contrato de dados; não confirma que a coleta trouxe o catálogo completo. Se uma captura mais recente trouxer menos da metade dos medicamentos de uma captura anterior com pelo menos 50, ela é preterida e a mais completa é exibida com aviso. Quando um status legado não identifica a origem, essa limitação aparece no diagnóstico.
+
+Para visualizar a interface sem consultar a internet, use **somente o fixture fictício**:
+
+```bash
+python -m src.extract.collector --fixture tests/fixtures/stock_demo.json
+```
+
+O fixture é rotulado como demonstração e **não representa o estoque atual**. Para voltar a usar os dados consultados à fonte, execute a coleta sem `--fixture`.
+
+Inicie o servidor local. Este comando mantém o terminal ocupado enquanto a aplicação estiver rodando; use `Ctrl+C` para encerrar. Depois de atualizar o código, encerre o servidor anterior e inicie-o novamente para garantir que o processo carregue as alterações:
+
+```bash
+python -m src.web
+```
+
+Abra [http://127.0.0.1:8000](http://127.0.0.1:8000). A aplicação oferece sugestões de medicamentos enquanto a pessoa digita, um dropdown para filtrar por unidade e catálogo paginado. Também mostra quantidades e contatos retornados pela fonte e informa o horário da consulta. Ao final, o mapa interativo destaca apenas as unidades relacionadas a pontos documentados em `src/static/unit_locations.json`; para as demais, oferece pesquisa externa pelo nome e endereço, sem inventar pinos. O mapa usa Leaflet e tiles do OpenStreetMap, com atribuição visível. Em implantação, configure `HOST=0.0.0.0` e `PORT`; `APP_STALE_AFTER_HOURS` ajusta o limite operacional do aviso de desatualização (padrão: 24 horas, não é SLA oficial). Execute o coletor periodicamente por um mecanismo operacional apropriado e monitore `collection_status.json`; o projeto ainda não configura agendamento automático.
+
+A busca oferece sugestões de medicamentos após duas letras e o filtro de unidades lista unidades presentes nos resultados correspondentes. O mapa não comprova estoque nem substitui a confirmação do endereço e da disponibilidade com a unidade. Os pontos mapeados vêm do OpenStreetMap; os endereços operacionais vêm do conjunto de estoque do Vivver e podem divergir. A tela sinaliza unidades sem coordenadas verificadas e permite pesquisá-las no Google Maps.
+
+Antes de disponibilizar publicamente, confirme que a autorização acadêmica também cobre a coleta automatizada e a republicação dos campos na aplicação. A tela distingue o horário de consulta do horário de atualização do estoque na unidade: a fonte consultada não fornece este último. A página orienta as pessoas a confirmar diretamente com a unidade antes do deslocamento.
+
+Valide o fluxo sem rede:
+
+```bash
+python -m pip install -r requirements-dev.txt
+python -m pytest -q
+```
+
+O roteiro para testar compreensão e utilidade com a comunidade está em [docs/mvp-validation.md](docs/mvp-validation.md). Testes automatizados não substituem essa validação com pessoas usuárias.
+
+### Pipeline tabular e transformação dimensional legadas
 
 Para executar a transformação dimensional sobre a captura incluída:
 
 ```bash
-python -m src.transform data/raw/vivver_estoque_2026-09-22T131443016020+0000.txt data/processed
+python -m src.transform.transform data/raw/vivver_estoque_2026-09-22T131443016020+0000.txt data/processed
 ```
 
 O comando imprime as métricas e grava ou atualiza `dim_produto.csv`, `dim_unidade.csv`, `fato_estoque.csv` e `transform_log.json` no diretório informado. Na execução registrada, foram produzidos **215 produtos**, **48 unidades** e **6.791 registros de estoque**.
@@ -137,10 +212,10 @@ As colunas e as validações efetivamente implementadas estão detalhadas em [do
 
 | Etapa | Status |
 | --- | --- |
-| Extract | Implementado em `src.extract` |
-| Raw storage | Implementado em `src.extract.save_raw` |
-| Transform dimensional | Implementado em `src.transform` |
-| Data validation | Implementado na transformação dimensional; relatório de perfil também existe em `src.quality` |
+| Extract | Implementado em `src.extract.source` |
+| Raw storage | Implementado em `src.extract.source.save_raw` |
+| Transform dimensional | Implementado em `src.transform.transform` |
+| Data validation | Implementado na transformação dimensional; relatório de perfil também existe em `src.transform.quality` |
 | Load em destino externo | Não implementado |
 
 ## Próximos passos

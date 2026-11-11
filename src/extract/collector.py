@@ -1,3 +1,5 @@
+"""Orchestrate authorized stock extraction, validation, and publication."""
+
 from __future__ import annotations
 
 import argparse
@@ -7,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from ..config import COLLECTION_STATUS, PROCESSED_DIR, PUBLIC_SNAPSHOT, RAW_DIR, Config
-from .source import ExtractedResponse, save_raw
+from .source import ExtractedResponse, public_source_url, save_raw
 from .sources import DEFAULT_STOCK_SOURCE, StockSource
 from ..transform.snapshot import normalize_stock, utc_now, write_json_atomic
 
@@ -29,7 +31,7 @@ class StockCollectionPipeline:
     source: StockSource = DEFAULT_STOCK_SOURCE
 
     def extract(self, fixture: Path | None = None) -> ExtractedResponse:
-        """Fetch the source response or read a local JSON fixture."""
+        """Extract a raw response from the configured source or a local fixture."""
         collected_at = utc_now()
         if fixture is not None:
             return ExtractedResponse(
@@ -42,10 +44,10 @@ class StockCollectionPipeline:
         return self.source.fetch(Config())
 
     def transform(self, response: ExtractedResponse, fixture: bool = False) -> dict[str, Any]:
-        """Validate source data and convert it to the public snapshot schema."""
+        """Validate the response and build a public snapshot without URL secrets."""
         snapshot = normalize_stock(
             response.content,
-            response.url,
+            public_source_url(response.url),
             response.collected_at,
             source_name=self.source.display_name,
         )
@@ -125,6 +127,7 @@ def _read_json(path: Path) -> dict:
 
 
 def main() -> int:
+    """Run a collection from the command line and report its outcome."""
     parser = argparse.ArgumentParser(description="Coleta e valida o estoque do Vivver.")
     parser.add_argument("--fixture", type=Path, help="Usa uma captura JSON local em vez da fonte online.")
     args = parser.parse_args()

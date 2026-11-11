@@ -1,3 +1,5 @@
+"""Shared source URLs, storage paths, and application configuration."""
+
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -15,6 +17,8 @@ COLLECTION_STATUS = PROCESSED_DIR / "collection_status.json"
 
 @dataclass(frozen=True)
 class Config:
+    """Configuration for requesting the public stock listing."""
+
     municipio: str = MUNICIPIO
     stock_page: str = STOCK_PAGE
     grid_url: str = GRID_URL

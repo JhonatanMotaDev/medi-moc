@@ -1,3 +1,5 @@
+"""Parse supported JSON and HTML responses into tabular rows."""
+
 from __future__ import annotations
 
 import json
@@ -9,6 +11,7 @@ from bs4 import BeautifulSoup
 
 
 def _rows_from_json(obj: Any) -> list[dict]:
+    """Extract row objects from common JSON response shapes."""
     if isinstance(obj, list):
         return [dict(x) for x in obj if isinstance(x, Mapping)]
 
@@ -24,6 +27,7 @@ def _rows_from_json(obj: Any) -> list[dict]:
 
 
 def _parse_html_table(html: str) -> pd.DataFrame | None:
+    """Choose the most complete HTML table while preserving text identifiers."""
     soup = BeautifulSoup(html, "lxml")
     candidates = []
 
@@ -48,6 +52,7 @@ def _parse_html_table(html: str) -> pd.DataFrame | None:
 
 
 def parse_response(content: str, content_type: str = "") -> pd.DataFrame:
+    """Parse a source response as JSON or as an HTML table."""
     text = content.lstrip("\ufeff \n\t")
 
     # Prefer JSON when the response declares it or looks like JSON.

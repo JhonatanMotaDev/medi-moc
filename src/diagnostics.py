@@ -1,27 +1,26 @@
+"""Explain which stock capture the public page will display."""
+
 from __future__ import annotations
 
 import json
 from pathlib import Path
-from urllib.parse import urlsplit, urlunsplit
 
 from .config import COLLECTION_STATUS, PUBLIC_SNAPSHOT, RAW_DIR, Config
+from .extract.source import public_source_url
 from .snapshot_store import is_fixture_capture, raw_collection_time, raw_sort_time
 from .transform.snapshot import normalize_stock
 
 
 def _redact_url(value: object) -> str:
     """Hide query strings, which may contain session or authenticity tokens."""
-    text = str(value)
     try:
-        parts = urlsplit(text)
+        return public_source_url(str(value))
     except ValueError:
-        return text
-    if not parts.scheme or not parts.netloc:
-        return text
-    return urlunsplit((parts.scheme, parts.netloc, parts.path, "", parts.fragment))
+        return str(value)
 
 
 def _snapshot_counts(snapshot: dict) -> tuple[int, int, int]:
+    """Count medicines, unit stock rows, and distinct health units."""
     products = snapshot.get("products", [])
     if not isinstance(products, list):
         return 0, 0, 0
@@ -41,6 +40,7 @@ def _snapshot_counts(snapshot: dict) -> tuple[int, int, int]:
 
 def diagnose(raw_dir: Path = RAW_DIR, snapshot_path: Path = PUBLIC_SNAPSHOT,
              status_path: Path = COLLECTION_STATUS) -> str:
+    """Inspect candidate captures and describe the selected public dataset."""
     lines = ["Diagnóstico local da fonte usada pela interface"]
     status: dict = {}
     try:
@@ -166,6 +166,7 @@ def diagnose(raw_dir: Path = RAW_DIR, snapshot_path: Path = PUBLIC_SNAPSHOT,
 
 
 def main() -> None:
+    """Print the local collection diagnostic report."""
     print(diagnose())
 
 

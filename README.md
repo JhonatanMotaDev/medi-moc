@@ -64,6 +64,7 @@ vivver-estoque-mvp/
 │   ├── load/
 │   │   └── load.py
 │   ├── pipeline.py
+│   ├── monitoring.py
 │   ├── presentation.py
 │   ├── snapshot_store.py
 │   ├── web.py
@@ -81,6 +82,15 @@ vivver-estoque-mvp/
 │   └── test_normalize.py
 └── requirements.txt
 ```
+
+### Fluxo em poucas palavras
+
+1. **Extração:** `src.extract` consulta o portal e preserva a resposta original.
+2. **Leitura e validação:** `src.transform` interpreta o retorno, valida os campos e organiza o estoque por medicamento e unidade.
+3. **Publicação:** `StockCollectionPipeline` salva uma cópia pública sanitizada; `src.web` apresenta a consulta, e `src.presentation` prepara os dados da tela.
+4. **Atualização e aviso:** GitHub Actions pode executar uma coleta diária autorizada, verificar a idade dos dados e sinalizar falhas.
+
+As etapas ficam em módulos separados, com classes para coordenar os fluxos e descrições nos pontos de entrada. Para uma visão rápida do processamento, consulte `src/extract/collector.py`, `src/pipeline.py` e `src/monitoring.py`.
 
 ## Executar localmente
 
@@ -141,7 +151,7 @@ Inicie o servidor local. Este comando mantém o terminal ocupado enquanto a apli
 python -m src.web
 ```
 
-Abra [http://127.0.0.1:8000](http://127.0.0.1:8000). A aplicação oferece sugestões acessíveis de medicamentos enquanto a pessoa digita, filtro por unidade, catálogo paginado, ordenação por relevância, nome ou quantidade de unidades com estoque, resumo de disponibilidade por medicamento e filtros ativos removíveis. Também mostra quantidades e contatos retornados pela fonte e informa o horário da consulta. O mapa interativo destaca apenas as unidades relacionadas a pontos documentados em `src/static/unit_locations.json`; para as demais, oferece pesquisa externa pelo nome e endereço, sem inventar pinos. O diretório de unidades fica recolhido por padrão, pode ser filtrado junto com o mapa e permite limitar a lista às unidades com pino. O mapa usa Leaflet e tiles do OpenStreetMap, com atribuição visível. Em implantação, configure `HOST=0.0.0.0` e `PORT`; `APP_STALE_AFTER_HOURS` ajusta o limite operacional do aviso de desatualização (padrão: 24 horas, não é SLA oficial). Execute o coletor periodicamente por um mecanismo operacional apropriado e monitore `collection_status.json`; o projeto ainda não configura agendamento automático.
+Abra [http://127.0.0.1:8000](http://127.0.0.1:8000). A aplicação oferece sugestões acessíveis de medicamentos enquanto a pessoa digita, filtro por unidade, catálogo paginado, ordenação por relevância, resumo de disponibilidade e filtros removíveis. Quantidade, apresentação do medicamento e horário da consulta aparecem juntos para facilitar a leitura. O mapa destaca pontos documentados e oferece pesquisa externa para as demais unidades. O diretório pode ser pesquisado e filtrado junto com o mapa. Em implantação, `APP_STALE_AFTER_HOURS` ajusta o limite do aviso de desatualização (padrão: 24 horas; não é SLA oficial).
 
 ### Publicar no Render
 
@@ -151,7 +161,13 @@ O arquivo `render.yaml` configura um serviço web Python com Waitress e deploy a
 2. No Render, crie um **Blueprint** e selecione `JhonatanMotaDev/medi-moc`; confirme o serviço gratuito `medi-moc`.
 3. Após o deploy, abra a URL pública `*.onrender.com` atribuída e exibida no painel do Render.
 
-O snapshot inicial em `data/processed/public_snapshot.json` permite que o site já abra com dados; ele é uma captura histórica e a página sinaliza sua idade. O projeto não atualiza os dados automaticamente após a publicação: execute uma coleta autorizada e publique o snapshot atualizado para renovar a consulta. O site não exige conta para consulta; autenticação de usuários não está implementada.
+O snapshot inicial em `data/processed/public_snapshot.json` permite que o site já abra com dados; ele é uma captura histórica e a página sinaliza sua idade. Com a atualização diária autorizada, o workflow publica uma nova captura quando os dados mudam. O site não exige conta para consulta; autenticação de usuários não está implementada.
+
+### Atualização diária e alertas
+
+O workflow `.github/workflows/refresh-stock.yml` pode consultar a fonte uma vez por dia às 09:17 UTC e publicar um snapshot novo no GitHub; essa atualização aciona o deploy automático do Render. Para evitar coleta não autorizada, o workflow fica desativado até confirmar que a autorização cobre consulta automatizada e republicação dos dados. Em **Settings → Secrets and variables → Actions → Variables → New repository variable**, crie `VIVVER_COLLECTION_AUTHORIZED` com o valor `true`.
+
+O workflow verifica se a atualização falhou ou se os dados passaram de 36 horas. Uma execução problemática fica marcada como falha no GitHub Actions. Para receber também um aviso em webhook compatível com Slack, crie em **Settings → Secrets and variables → Actions → Secrets** o segredo `COLLECTION_ALERT_WEBHOOK_URL`. O webhook é opcional; sem ele, o log e o status da execução no GitHub Actions registram a falha. Para testar após habilitar a autorização, use **Actions → Atualizar consulta de estoque → Run workflow**.
 
 Antes de disponibilizar publicamente, confirme que a autorização acadêmica também cobre a coleta automatizada e a republicação dos campos na aplicação.
 

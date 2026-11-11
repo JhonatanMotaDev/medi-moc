@@ -350,6 +350,7 @@ main {
 .freshness-copy { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
 .freshness-copy strong { color: var(--ink); font-size: 14px; font-weight: 650; }
 .freshness-date { color: var(--muted); }
+.freshness-timezone { margin-left: 3px; color: var(--muted-strong); }
 .freshness-relative { color: var(--muted-strong); }
 .freshness-details { margin-left: auto; flex: 0 0 auto; }
 .freshness-details summary {
@@ -566,7 +567,7 @@ main {
   text-align: right;
 }
 .stock-quantity { max-width: 100%; overflow-wrap: anywhere; font-size: 22px; line-height: 1.05; font-weight: 750; }
-.stock-unit { font-size: 10px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; }
+.stock-unit { max-width: 100%; overflow-wrap: anywhere; font-size: 10px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; }
 .stock-caption { color: var(--muted-strong); font-size: 11px; }
 .stock-badge.out-stock { min-width: 0; padding: 8px 10px; color: var(--danger-ink); background: var(--danger-soft); }
 .stock-badge.out-stock .stock-caption { color: var(--danger-ink); }
@@ -934,9 +935,23 @@ main {
   .unit-map-frame { height: 270px; }
   .directory-row { grid-template-columns: 1fr; gap: 8px; }
   .map-unit-button { width: 100%; justify-content: center; }
+  .unit-phone, .unit-map-link, .map-action-button, .map-toggle, .map-unit-button,
+  .unit-directory > summary, .freshness-details summary { min-height: 44px; }
+  .unit-row { gap: 9px; padding: 12px; }
+  .stock-badge { flex-wrap: wrap; }
+  .freshness-copy { flex: 1 1 calc(100% - 24px); }
+  .freshness-date { line-height: 1.45; }
 }
 
 @media (max-width: 420px) {
+  :root { --page: calc(100% - 28px); --page-wide: calc(100% - 28px); }
+  main { padding-top: 26px; }
+  .header-inner { gap: 8px; }
+  .source-shortcut { font-size: 12px; }
+  .freshness-banner { gap: 8px; padding: 12px; }
+  .freshness-details { margin-left: 17px; }
+  .unit-map-heading { align-items: flex-start; }
+  .map-legend { flex-direction: column; gap: 5px; }
   .search-panel { grid-template-columns: 1fr; }
   .search-button { height: 48px; }
   .medicine-field { height: 50px; }

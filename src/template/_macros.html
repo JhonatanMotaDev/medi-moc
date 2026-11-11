@@ -1,3 +1,4 @@
+{# Blocos reutilizáveis de medicamentos, catálogo, paginação e unidades. #}
 {% macro icon(name, class_name='') -%}
 <svg class="icon{% if class_name %} {{ class_name }}{% endif %}" aria-hidden="true" focusable="false"><use href="#icon-{{ name }}"></use></svg>
 {%- endmacro %}
@@ -45,7 +46,7 @@
           {% if unit.is_available %}
             <span class="stock-badge in-stock">
               <span class="stock-quantity">{{ unit.quantity_display }}</span>
-              <span class="stock-unit">unidades</span>
+              <span class="stock-unit">{{ product.supply_unit or 'unidades de estoque' }}</span>
               <span class="stock-caption">na consulta</span>
             </span>
           {% else %}

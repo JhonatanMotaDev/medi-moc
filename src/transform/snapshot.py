@@ -1,3 +1,5 @@
+"""Validate source records and publish the compact public snapshot schema."""
+
 from __future__ import annotations
 
 import json
@@ -14,6 +16,7 @@ class SnapshotValidationError(ValueError):
 
 
 def _quantity(value: Any, location: str) -> int | float:
+    """Validate a non-negative stock amount and return an integer when exact."""
     try:
         quantity = Decimal(str(value))
     except (InvalidOperation, ValueError):
@@ -30,6 +33,7 @@ def normalize_stock(
     collected_at: str,
     source_name: str = "Portal Cidadão – Estoque (Vivver)",
 ) -> dict[str, Any]:
+    """Validate and normalize a full stock response for public display."""
     try:
         products = json.loads(payload)
     except json.JSONDecodeError as error:
@@ -109,6 +113,7 @@ def normalize_stock(
 
 
 def write_json_atomic(path: Path, data: dict[str, Any]) -> None:
+    """Write JSON through a temporary file before replacing the destination."""
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary_path: Path | None = None
     try:
@@ -132,4 +137,5 @@ def write_json_atomic(path: Path, data: dict[str, Any]) -> None:
 
 
 def utc_now() -> str:
+    """Return the current UTC time as an ISO-8601 string."""
     return datetime.now(timezone.utc).isoformat()

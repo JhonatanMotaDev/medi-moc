@@ -1,3 +1,5 @@
+"""Create the Flask application and expose public search routes."""
+
 from __future__ import annotations
 
 import os
@@ -30,6 +32,7 @@ def create_app(
     status_path: Path = COLLECTION_STATUS,
     raw_dir: Path = RAW_DIR,
 ) -> Flask:
+    """Build the web app with injectable storage paths for tests and hosting."""
     application = Flask(__name__, template_folder="template")
     application.config["TEMPLATES_AUTO_RELOAD"] = True
 
@@ -37,11 +40,13 @@ def create_app(
 
     @application.template_filter("phone_href")
     def phone_href(phone: str) -> str:
+        """Convert a displayed phone number to a safe tel: link."""
         digits = "".join(character for character in phone if character.isdigit() or character == "+")
         return f"tel:{digits}"
 
     @application.get("/api/medicines")
     def medicine_suggestions():
+        """Return up to ten accent-insensitive medicine suggestions."""
         query = search_key(request.args.get("q", "").strip())
         if len(query) < 2:
             return jsonify([])
@@ -67,6 +72,7 @@ def create_app(
 
     @application.get("/")
     def index():
+        """Render the search, availability, freshness, and map view."""
         bundle = repository.load()
         context = build_home_context(
             bundle.snapshot,

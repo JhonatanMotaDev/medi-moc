@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
 
 from src.extract.collector import StockCollectionPipeline, collect
+from src.extract.source import ExtractedResponse, public_source_url
+from src.monitoring import CollectionMonitor
 from src.config import Config
 from src.snapshot_store import SnapshotRepository
 from src.transform.snapshot import SnapshotValidationError, normalize_stock
@@ -74,6 +77,27 @@ def test_collection_publishes_fixture_with_demo_label_and_status(tmp_path):
     assert Path(status["raw_capture"]).exists()
 
 
+def test_snapshot_source_url_drops_credentials_and_query_parameters():
+    response = ExtractedResponse(
+        content=FIXTURE.read_text(encoding="utf-8"),
+        content_type="application/json",
+        url="https://user:pass@source.example/stock?authenticity_token=private",
+        collected_at="2026-09-30T12:00:00+00:00",
+        status_code=200,
+    )
+
+    snapshot = StockCollectionPipeline().transform(response)
+
+    assert snapshot["metadata"]["source_url"] == "https://source.example/stock"
+    assert "private" not in json.dumps(snapshot)
+
+
+def test_public_source_url_removes_authentication_and_fragment():
+    assert public_source_url(
+        "https://user:pass@source.example:443/stock?token=secret#section"
+    ) == "https://source.example:443/stock"
+
+
 def test_failed_collection_preserves_last_valid_snapshot_and_records_failure(tmp_path):
     snapshot_path = tmp_path / "public_snapshot.json"
     status_path = tmp_path / "collection_status.json"
@@ -92,6 +116,48 @@ def test_failed_collection_preserves_last_valid_snapshot_and_records_failure(tmp
     assert status["last_success_at"] == valid_snapshot["metadata"]["collected_at"]
     assert "lista não vazia" in status["last_error"]
     assert len(list(raw_dir.glob("*.txt"))) == 2
+
+
+def test_collection_monitor_detects_failure_and_stale_data(tmp_path):
+    snapshot_path = tmp_path / "snapshot.json"
+    status_path = tmp_path / "status.json"
+    snapshot_path.write_text(json.dumps({
+        "metadata": {"collected_at": "2026-09-30T12:00:00+00:00"},
+        "products": [],
+    }), encoding="utf-8")
+    status_path.write_text(json.dumps({
+        "last_attempt_status": "failed",
+        "last_error": "private source URL must not be sent",
+    }), encoding="utf-8")
+    monitor = CollectionMonitor(snapshot_path, status_path, stale_after_hours=24)
+
+    reasons = monitor.check(now=datetime(2026, 10, 2, 12, tzinfo=timezone.utc))
+
+    assert len(reasons) == 2
+    assert all("private" not in reason for reason in reasons)
+
+
+def test_collection_monitor_accepts_recent_successful_snapshot(tmp_path):
+    snapshot_path = tmp_path / "snapshot.json"
+    status_path = tmp_path / "status.json"
+    snapshot_path.write_text(json.dumps({
+        "metadata": {"collected_at": "2026-09-30T12:00:00+00:00"},
+        "products": [],
+    }), encoding="utf-8")
+    status_path.write_text(json.dumps({"last_attempt_status": "success"}), encoding="utf-8")
+    monitor = CollectionMonitor(snapshot_path, status_path, stale_after_hours=24)
+
+    assert monitor.check(now=datetime(2026, 9, 30, 18, tzinfo=timezone.utc)) == []
+
+
+def test_daily_collection_workflow_requires_authorization_before_fetching():
+    workflow = Path(__file__).parents[1] / ".github" / "workflows" / "refresh-stock.yml"
+    content = workflow.read_text(encoding="utf-8")
+
+    assert 'cron: "17 9 * * *"' in content
+    assert "vars.VIVVER_COLLECTION_AUTHORIZED == 'true'" in content
+    assert "python -m src.extract.collector" in content
+    assert "python -m src.monitoring" in content
 
 
 def test_public_search_filters_medicines_and_units_accent_insensitively(tmp_path):
@@ -382,7 +448,8 @@ def test_public_page_and_autocomplete_read_raw_txt_without_snapshot(tmp_path):
 
     assert "DIPIRONA SÓDICA 500 MG" in page
     assert suggestions.get_json() == ["DIPIRONA SÓDICA 500 MG"]
-    assert "2026-09-30 10:11:12.123456 UTC" in page
+    assert "30/09/2026 às 07:11" in page
+    assert "horário de Brasília" in page
 
 
 def test_raw_collection_time_uses_timestamp_in_historical_filename(tmp_path):

@@ -20,7 +20,11 @@ dim_produto.csv + dim_unidade.csv + fato_estoque.csv + transform_log.json
 [Load em destino externo — não implementado]
 ```
 
+Na versão apresentada ao público, a execução é coordenada por `StockCollectionPipeline`: extrair, guardar a resposta original, validar os dados e publicar o snapshot. A outra rota, `TabularPipeline`, prepara tabelas para análise local. As duas são independentes para que a saída do site não se confunda com arquivos de exploração.
+
 O repositório também tem a rota `src.pipeline`, que usa `src.transform.parse`, `src.transform.normalize`, `src.transform.quality` e `src.load.load`. Ela preserva o raw, mas escreve uma representação tabular diferente em `estoque_montes_claros.csv` e, se o suporte estiver instalado, em `estoque_montes_claros.parquet`. Como `src.pipeline` não invoca `src.transform.transform`, as duas rotas não devem ser tratadas como uma única execução encadeada.
+
+O workflow diário fica em `.github/workflows/refresh-stock.yml`. A coleta permanece desativada até `VIVVER_COLLECTION_AUTHORIZED=true` ser definido nas variáveis do repositório. Se a coleta falhar ou a consulta ficar mais de 36 horas sem atualizar, `src.monitoring` registra a falha e, se configurado, envia um alerta ao webhook.
 
 ### Orquestração da coleta pública
 

@@ -1,3 +1,5 @@
+"""Select, cache, and describe the public stock snapshot."""
+
 from __future__ import annotations
 
 import json
@@ -9,13 +11,14 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from .config import COLLECTION_STATUS, PUBLIC_SNAPSHOT, RAW_DIR, Config
 from .transform.snapshot import normalize_stock
 
 
 def read_json(path: Path) -> dict:
-    """Read a JSON object, returning an empty mapping for missing/invalid files."""
+    """Read a JSON object, returning an empty mapping for missing or invalid data."""
     try:
         data = json.loads(path.read_text(encoding="utf-8-sig"))
     except (OSError, UnicodeDecodeError, json.JSONDecodeError):
@@ -30,6 +33,7 @@ def search_key(value: str) -> str:
 
 
 def raw_collection_time(raw_path: Path) -> str:
+    """Read a capture timestamp from its filename or filesystem metadata."""
     match = re.fullmatch(r"vivver_estoque_(.+)\.txt", raw_path.name)
     if match:
         timestamp = match.group(1)
@@ -46,6 +50,7 @@ def raw_collection_time(raw_path: Path) -> str:
 
 
 def raw_sort_time(raw_path: Path) -> float:
+    """Convert a capture timestamp to a sortable UTC epoch value."""
     if raw_path.stem.casefold().endswith("_fixture"):
         return 0.0
     try:
@@ -55,6 +60,7 @@ def raw_sort_time(raw_path: Path) -> float:
 
 
 def is_fixture_capture(path: Path, status: dict) -> bool:
+    """Identify local demo data so it is never mistaken for a live capture."""
     if not isinstance(status, dict):
         status = {}
     if path.stem.casefold().endswith("_fixture"):
@@ -160,12 +166,14 @@ def select_raw_snapshot(raw_dir: Path, status: dict) -> dict | None:
 
 
 def load_public_snapshot(raw_dir: Path, status_path: Path, snapshot_path: Path) -> dict:
+    """Load the selected raw capture or use the last published snapshot."""
     status = read_json(status_path)
     snapshot = select_raw_snapshot(raw_dir, status)
     return snapshot if snapshot is not None else read_json(snapshot_path)
 
 
 def freshness(snapshot: dict, status: dict, now: datetime) -> dict:
+    """Summarize snapshot age for the public page in local Brazilian time."""
     metadata = snapshot.get("metadata", {})
     if not isinstance(metadata, dict):
         metadata = {}
@@ -203,8 +211,22 @@ def freshness(snapshot: dict, status: dict, now: datetime) -> dict:
         label = "Consulta recente à fonte."
         tone = "success"
 
+    display_time = None
+    if collected_at:
+        try:
+            collected_time = datetime.fromisoformat(str(collected_at).replace("Z", "+00:00"))
+            if collected_time.tzinfo is None:
+                collected_time = collected_time.replace(tzinfo=timezone.utc)
+            display_time = collected_time.astimezone(
+                ZoneInfo("America/Sao_Paulo")
+            ).strftime("%d/%m/%Y às %H:%M")
+        except (TypeError, ValueError):
+            display_time = None
+
     return {
         "collected_at": collected_at,
+        "display_time": display_time,
+        "timezone_label": "horário de Brasília",
         "label": label,
         "tone": tone,
         "is_stale": is_stale,
@@ -217,6 +239,7 @@ def freshness(snapshot: dict, status: dict, now: datetime) -> dict:
 
 
 def humanize_age(age: timedelta | None) -> str:
+    """Express snapshot age as a short Portuguese relative time label."""
     if age is None:
         return "horário da consulta indisponível"
     seconds = max(0, int(age.total_seconds()))
@@ -244,6 +267,8 @@ def humanize_age(age: timedelta | None) -> str:
 
 @dataclass(frozen=True)
 class SnapshotBundle:
+    """Pair the displayed stock snapshot with the last collection status."""
+
     snapshot: dict
     status: dict
 
@@ -263,6 +288,7 @@ class SnapshotRepository:
         status_path: Path = COLLECTION_STATUS,
         raw_dir: Path = RAW_DIR,
     ) -> None:
+        """Set data paths and initialize the thread-safe snapshot cache."""
         self.snapshot_path = snapshot_path
         self.status_path = status_path
         self.raw_dir = raw_dir
@@ -271,6 +297,7 @@ class SnapshotRepository:
         self._bundle: SnapshotBundle | None = None
 
     def _file_signature(self, path: Path) -> tuple[int, int] | None:
+        """Return the modification time and size used to refresh the cache."""
         try:
             stat = path.stat()
         except OSError:
@@ -278,6 +305,7 @@ class SnapshotRepository:
         return stat.st_mtime_ns, stat.st_size
 
     def _current_signature(self) -> tuple[Any, ...]:
+        """Build a signature from the raw captures and published metadata."""
         raw_entries: list[tuple[str, int, int]] = []
         try:
             raw_paths = sorted(self.raw_dir.glob("vivver_estoque_*.txt"))
@@ -296,6 +324,7 @@ class SnapshotRepository:
         )
 
     def load(self) -> SnapshotBundle:
+        """Return the cached snapshot or reload it after a source file changes."""
         signature = self._current_signature()
         with self._lock:
             if self._bundle is not None and signature == self._signature:

@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""
-Transformação dos dados de estoque da API Vivver.
+"""Transform the source into dimensional stock tables for local analysis.
 
 Entrada:
     JSON em formato de lista, com produtos contendo `estoque_unidade`.
@@ -13,6 +12,8 @@ Saída:
 
 Uso:
     python transform.py <arquivo_entrada.txt> <diretorio_saida>
+
+The web application uses the separate public snapshot pipeline.
 """
 
 from __future__ import annotations
@@ -77,6 +78,7 @@ def normalize_phone(value: Any) -> str:
 
 
 def validate_schema(products: list[dict[str, Any]]) -> None:
+    """Reject missing product or unit fields before dimensional processing."""
     for idx, product in enumerate(products):
         missing = PRODUCT_REQUIRED - product.keys()
         if missing:
@@ -105,6 +107,7 @@ def transform(products: list[dict[str, Any]]) -> tuple[
     list[dict[str, Any]],
     dict[str, Any],
 ]:
+    """Build product, unit, and stock fact tables with consistency checks."""
     dim_produto: list[dict[str, Any]] = []
     dim_unidade_by_id: dict[int, dict[str, Any]] = {}
     fato_estoque: list[dict[str, Any]] = []
@@ -227,6 +230,7 @@ def transform(products: list[dict[str, Any]]) -> tuple[
 
 
 def write_csv(path: Path, rows: list[dict[str, Any]], fieldnames: list[str]) -> None:
+    """Write one UTF-8 CSV table with a stable column order."""
     path.parent.mkdir(parents=True, exist_ok=True)
 
     with path.open("w", encoding="utf-8", newline="") as file:
@@ -240,6 +244,7 @@ def write_csv(path: Path, rows: list[dict[str, Any]], fieldnames: list[str]) -> 
 
 
 def main() -> None:
+    """Run the dimensional transform from the command line."""
     parser = argparse.ArgumentParser(description="Transforma o estoque bruto da API Vivver.")
     parser.add_argument("input_file", type=Path, help="Arquivo JSON/TXT extraído da API")
     parser.add_argument("output_dir", type=Path, help="Diretório para os dados transformados")

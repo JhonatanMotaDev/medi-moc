@@ -1,0 +1,1 @@
+"""Parse, validate, and normalize source stock data."""

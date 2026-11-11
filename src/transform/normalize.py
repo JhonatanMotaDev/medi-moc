@@ -1,3 +1,5 @@
+"""Normalize tabular stock data to stable names, types, and identifiers."""
+
 from __future__ import annotations
 
 import re
@@ -33,6 +35,7 @@ ALIASES = {
 
 
 def _key(value: object) -> str:
+    """Normalize a source label so aliases can be matched consistently."""
     text = "" if value is None else str(value)
     text = unicodedata.normalize("NFKD", text)
     text = "".join(c for c in text if not unicodedata.combining(c))
@@ -40,6 +43,7 @@ def _key(value: object) -> str:
 
 
 def _clean_text(series: pd.Series) -> pd.Series:
+    """Trim and standardize text columns, marking empty values as missing."""
     return (
         series.astype("string")
         .str.normalize("NFC")
@@ -50,9 +54,11 @@ def _clean_text(series: pd.Series) -> pd.Series:
 
 
 def _to_number(series: pd.Series) -> pd.Series:
+    """Convert Brazilian-formatted quantities while retaining missing values."""
     s = _clean_text(series)
 
     def parse_one(x):
+        """Parse one localized numeric value."""
         if pd.isna(x):
             return pd.NA
 
@@ -91,6 +97,7 @@ def normalize(
     collected_at: str | None = None,
     source_url: str | None = None,
 ) -> pd.DataFrame:
+    """Apply the canonical schema and add collection/source metadata."""
     out = df.copy()
 
     # Map source-specific labels to a canonical schema.

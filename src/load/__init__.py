@@ -1,0 +1,1 @@
+"""Write processed stock data for local analysis and publication."""

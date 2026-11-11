@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+"""Create a compact column-level profile of a normalized dataset."""
+
 import pandas as pd
 
 
 def quality_report(df: pd.DataFrame) -> pd.DataFrame:
+    """Summarize types, missing values, and distinct values by column."""
     report = pd.DataFrame({
         "coluna": df.columns,
         "tipo": [str(df[c].dtype) for c in df.columns],

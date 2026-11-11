@@ -1,3 +1,5 @@
+"""HTTP extraction helpers and the immutable raw-response model."""
+
 from __future__ import annotations
 
 import re
@@ -5,6 +7,7 @@ import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import urlsplit, urlunsplit
 
 import requests
 
@@ -30,7 +33,22 @@ class ExtractedResponse:
     status_code: int
 
 
+def public_source_url(value: str) -> str:
+    """Keep the public source address while removing credentials and query data."""
+    parts = urlsplit(value)
+    hostname = parts.hostname or ""
+    if ":" in hostname and not hostname.startswith("["):
+        hostname = f"[{hostname}]"
+    try:
+        port = parts.port
+    except ValueError:
+        port = None
+    netloc = f"{hostname}:{port}" if port else hostname
+    return urlunsplit((parts.scheme, netloc, parts.path, "", ""))
+
+
 def _csrf_from_html(html: str) -> str | None:
+    """Read the request token needed by the source's stock grid."""
     patterns = [
         r'name=["\']authenticity_token["\'][^>]*value=["\']([^"\']+)["\']',
         r'value=["\']([^"\']+)["\'][^>]*name=["\']authenticity_token["\']',
@@ -43,6 +61,7 @@ def _csrf_from_html(html: str) -> str | None:
 
 
 def fetch_stock(config: Config) -> ExtractedResponse:
+    """Request the stock page and return the source's raw JSON response."""
     session = requests.Session()
     session.headers.update({
         "User-Agent": "VivverEstoqueMVP/0.2 (academic public-interest project)",
@@ -81,6 +100,7 @@ def _get_with_retries(
     url: str,
     params: dict[str, str] | None = None,
 ) -> requests.Response:
+    """Retry transient HTTP and network errors with a bounded delay."""
     retryable_statuses = {429, 500, 502, 503, 504}
 
     for attempt in range(3):
@@ -106,6 +126,7 @@ def _get_with_retries(
 
 
 def save_raw(result: ExtractedResponse, raw_dir: Path, prefix: str = "vivver_estoque") -> Path:
+    """Preserve the unmodified response body in the raw-data directory."""
     raw_dir.mkdir(parents=True, exist_ok=True)
     stamp = result.collected_at.replace(":", "").replace("+00:00", "Z").replace(".", "")
     path = raw_dir / f"{prefix}_{stamp}.txt"

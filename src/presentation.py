@@ -1,3 +1,5 @@
+"""Prepare validated stock data for the public page and search controls."""
+
 from __future__ import annotations
 
 import json
@@ -26,7 +28,7 @@ _locations_cache: tuple[tuple[int, int] | None, dict[str, dict]] = (None, {})
 
 
 def load_unit_locations(path: Path = LOCATIONS_PATH) -> dict[str, dict]:
-    """Read documented map points, cached by file modification state."""
+    """Load documented map points and reuse them until the file changes."""
     global _locations_cache
     try:
         stat = path.stat()
@@ -59,6 +61,7 @@ def load_unit_locations(path: Path = LOCATIONS_PATH) -> dict[str, dict]:
 
 
 def _quantity(value: Any) -> float:
+    """Convert a snapshot quantity to a number for display and sorting."""
     if isinstance(value, bool):
         return 0
     if isinstance(value, (int, float)):
@@ -70,12 +73,14 @@ def _quantity(value: Any) -> float:
 
 
 def _format_quantity(value: float) -> str:
+    """Format stock counts with Brazilian thousands and decimal separators."""
     if float(value).is_integer():
         return f"{int(value):,}".replace(",", ".")
     return f"{value:,.2f}".rstrip("0").rstrip(".").replace(",", "X").replace(".", ",").replace("X", ".")
 
 
 def _availability_label(available: int, total: int) -> str:
+    """Describe how many units reported a positive quantity."""
     if total == 0:
         return "Sem unidades nesta consulta"
     if available == 0:
@@ -88,6 +93,7 @@ def _availability_label(available: int, total: int) -> str:
 
 
 def _relevance(product: dict, normalized_query: str) -> int:
+    """Rank exact, prefix, and partial medicine-name matches."""
     if not normalized_query:
         return 0
     name_key = search_key(product["name"])
@@ -101,6 +107,7 @@ def _relevance(product: dict, normalized_query: str) -> int:
 
 
 def _page_window(current: int, total: int) -> list[int | None]:
+    """Build a compact page-number list with gaps for long catalogs."""
     if total <= 7:
         return list(range(1, total + 1))
 
@@ -123,6 +130,7 @@ def _page_window(current: int, total: int) -> list[int | None]:
 
 
 def _build_units(product: dict, locations: Mapping[str, dict]) -> list[dict]:
+    """Prepare a medicine's unit rows with quantities and map metadata."""
     units: list[dict] = []
     raw_units = product.get("units", [])
     if not isinstance(raw_units, list):
@@ -150,6 +158,7 @@ def _build_units(product: dict, locations: Mapping[str, dict]) -> list[dict]:
 
 
 def _decorate_product(product: dict, units: list[dict]) -> dict:
+    """Add availability counts and order available units first."""
     available = sum(1 for unit in units if unit["is_available"])
     ordered_units = sorted(
         units,
@@ -173,6 +182,7 @@ def _build_unit_options(
     locations: Mapping[str, dict],
     available_only: bool = False,
 ) -> list[dict]:
+    """Aggregate product rows into the unique unit selector and directory."""
     units_by_id: dict[str, dict] = {}
     for product in products:
         for unit in product["units"]:
@@ -210,7 +220,8 @@ def build_home_context(
 
     This function is intentionally pure with respect to the snapshot: it never
     mutates the validated data, so the same snapshot can serve the page, the
-    autocomplete API and future consumers.
+    autocomplete API and future consumers. The context groups product counts,
+    filtered results, map locations, and freshness into one screen-ready object.
     """
     now = now or datetime.now(timezone.utc)
     metadata = snapshot.get("metadata", {})

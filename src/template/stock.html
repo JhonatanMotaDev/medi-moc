@@ -7,7 +7,7 @@
     <meta name="description" content="Consulte registros públicos de disponibilidade de medicamentos nas unidades de saúde.">
     <title>Medicamentos na rede pública | Medi Moc</title>
     <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='medi-moc-logo.svg') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css', v='27') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css', v='28') }}">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
   </head>
   <body>
@@ -30,6 +30,8 @@
 
     <a class="skip-link" href="#search-section">Ir direto para a busca</a>
 
+    <!-- Cabeçalho: identidade do serviço e acesso à fonte oficial. -->
+    <!-- Cabeçalho: identidade do serviço e acesso à fonte oficial. -->
     <header class="site-header">
       <div class="header-inner">
         <a class="brand" href="/" aria-label="Medi Moc — página inicial">
@@ -44,8 +46,10 @@
       </div>
     </header>
 
+    <!-- Conteúdo principal: busca, atualização, resultados e mapa. -->
     <main>
       {% if has_snapshot %}
+        <!-- Busca principal e filtro por unidade. -->
         <section class="hero" aria-labelledby="page-title">
           <div class="hero-copy-block">
             <h1 id="page-title">Medicamentos na rede pública</h1>
@@ -101,13 +105,15 @@
           </div>
         </section>
 
+        <!-- Horário da consulta e contexto sobre atualização da fonte. -->
         <section class="freshness-banner {{ freshness.tone }}" aria-label="Atualidade dos dados">
           <span class="freshness-dot" aria-hidden="true"></span>
           <div class="freshness-copy">
             <strong>{{ freshness.label }}</strong>
             <span class="freshness-date">
               {% if freshness.collected_at %}
-                Consulta em <time datetime="{{ freshness.collected_at }}">{{ freshness.collected_at | replace('T', ' ') | replace('+00:00', ' UTC') | replace('Z', ' UTC') }}</time>
+                Consulta em <time datetime="{{ freshness.collected_at }}">{{ freshness.display_time or 'Horário indisponível' }}</time>
+                {% if freshness.display_time %}<span class="freshness-timezone">({{ freshness.timezone_label }})</span>{% endif %}
               {% else %}
                 Horário da consulta indisponível
               {% endif %}
@@ -131,6 +137,7 @@
           </p>
         {% endif %}
 
+        <!-- Resultados filtrados e catálogo paginado. -->
         {% if query or unit_query or show_catalog %}
           <section class="results-section" aria-labelledby="results-title">
             <div class="section-heading">
@@ -202,6 +209,7 @@
           </section>
         {% endif %}
 
+        <!-- Pesquisa geográfica e diretório das unidades de saúde. -->
         <section class="unit-map-section" aria-labelledby="unit-map-title">
           <div class="unit-map-heading">
             <div>

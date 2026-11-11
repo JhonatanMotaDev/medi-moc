@@ -1,5 +1,8 @@
 (() => {
+  // Busca de medicamentos, filtros do catálogo e mapa das unidades.
+  // Busca de medicamentos, filtros do catálogo e mapa das unidades.
   const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  // Helpers compartilhados de texto, animação e atraso da pesquisa.
   const normalize = (value) =>
     (value || "").normalize("NFKD").replace(/\p{Diacritic}/gu, "").toLowerCase();
 
@@ -15,6 +18,8 @@
     };
   };
 
+  // Configura sugestões acessíveis e navegação por teclado para a busca.
+  // Configura sugestões acessíveis e navegação por teclado para a busca.
   function initAutocomplete() {
     const input = document.querySelector("#medicine-search");
     const listbox = document.querySelector("#medicine-suggestions");
@@ -35,6 +40,7 @@
       if (status) status.textContent = message;
     };
 
+    // Mantém a lista de sugestões e o estado do leitor de tela sincronizados.
     const closeList = () => {
       requestVersion += 1;
       window.clearTimeout(timer);
@@ -137,6 +143,7 @@
       setStatus(`${names.length} sugestões disponíveis. Use as setas para navegar.`);
     };
 
+    // Descarta respostas antigas para não sobrescrever a busca atual.
     const fetchSuggestions = async (query, version) => {
       controller?.abort();
       controller = new AbortController();
@@ -215,12 +222,16 @@
     input.form?.addEventListener("submit", closeList);
   }
 
+  // Aplica imediatamente os filtros de unidade e ordenação.
+  // Aplica imediatamente os filtros de unidade e ordenação.
   function initAutoSubmit() {
     document.querySelectorAll("[data-autosubmit]").forEach((select) => {
       select.addEventListener("change", () => select.form?.requestSubmit());
     });
   }
 
+  // Mantém pesquisa, seleção, diretório e mapa apontando para a mesma unidade.
+  // Mantém pesquisa, seleção, diretório e mapa apontando para a mesma unidade.
   function initMap() {
     const mapFrame = document.querySelector("#unit-map");
     const mapSearch = document.querySelector("#map-unit-search");
@@ -274,6 +285,7 @@
       }
     };
 
+    // Aplica o mesmo texto e filtro de pinos a cada linha do diretório.
     const filterDirectory = () => {
       const query = normalize(mapSearch?.value);
       const onlyMapped = Boolean(mappedFilter?.checked);

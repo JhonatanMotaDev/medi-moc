@@ -149,7 +149,7 @@ O arquivo `render.yaml` configura um serviço web Python com Waitress e deploy a
 
 1. Envie o repositório ao GitHub e autorize o Render a acessá-lo.
 2. No Render, crie um **Blueprint** e selecione `JhonatanMotaDev/medi-moc`; confirme o serviço gratuito `medi-moc`.
-3. Após o deploy, use o endereço público `https://medi-moc.onrender.com` (o Render também mostra o endereço atribuído no painel).
+3. Após o deploy, abra a URL pública `*.onrender.com` atribuída e exibida no painel do Render.
 
 O snapshot inicial em `data/processed/public_snapshot.json` permite que o site já abra com dados; ele é uma captura histórica e a página sinaliza sua idade. O projeto não atualiza os dados automaticamente após a publicação: execute uma coleta autorizada e publique o snapshot atualizado para renovar a consulta. O site não exige conta para consulta; autenticação de usuários não está implementada.
 

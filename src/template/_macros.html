@@ -1,0 +1,142 @@
+{% macro icon(name, class_name='') -%}
+<svg class="icon{% if class_name %} {{ class_name }}{% endif %}" aria-hidden="true" focusable="false"><use href="#icon-{{ name }}"></use></svg>
+{%- endmacro %}
+
+{% macro medicine_card(product) %}
+<article class="medicine-card" id="medicamento-{{ product.product_id }}">
+  <header class="medicine-card-top">
+    <div class="medicine-title-group">
+      <span class="medicine-symbol">{{ icon('pill') }}</span>
+      <div class="medicine-heading">
+        <p class="product-code">Código {{ product.product_id }}</p>
+        <h3>{{ product.name }}</h3>
+        {% if product.supply_unit %}<p class="supply">Apresentação: {{ product.supply_unit }}</p>{% endif %}
+      </div>
+    </div>
+    <span class="availability-pill{% if product.has_available %} is-available{% else %} is-empty{% endif %}">
+      {{ icon('check' if product.has_available else 'info') }}
+      <span>{{ product.availability_label }}</span>
+    </span>
+  </header>
+
+  {% if product.units %}
+    <div class="unit-list">
+      {% for unit in product.units %}
+        <div class="unit-row{% if unit.is_available %} has-stock{% else %} no-stock{% endif %}">
+          <span class="unit-marker">{{ icon('pin') }}</span>
+          <div class="unit-info">
+            <strong>{{ unit.name }}</strong>
+            {% if unit.address %}<span class="unit-address">{{ icon('map') }}<span>{{ unit.address }}</span></span>{% endif %}
+            <div class="unit-actions">
+              {% if unit.phone %}
+                <a class="unit-phone" href="{{ unit.phone | phone_href }}">{{ icon('phone') }}<span>{{ unit.phone }}</span></a>
+              {% endif %}
+              <button
+                class="unit-map-link js-locate-unit"
+                type="button"
+                data-map-unit="{{ unit.unit_id }}"
+                data-map-name="{{ unit.name }}"
+                data-map-address="{{ unit.address }}"
+                data-map-status="{{ unit.map_status }}">
+                {{ icon('locate') }}<span>{{ 'Ver no mapa' if unit.has_map_location else 'Pesquisar no mapa' }}</span>
+              </button>
+            </div>
+          </div>
+          {% if unit.is_available %}
+            <span class="stock-badge in-stock">
+              <span class="stock-quantity">{{ unit.quantity_display }}</span>
+              <span class="stock-unit">unidades</span>
+              <span class="stock-caption">na consulta</span>
+            </span>
+          {% else %}
+            <span class="stock-badge out-stock">
+              <span class="stock-dot" aria-hidden="true"></span>
+              <span class="stock-caption">Sem quantidade registrada</span>
+            </span>
+          {% endif %}
+        </div>
+      {% endfor %}
+    </div>
+    {% if product.unit_count > 1 %}
+      <p class="unit-order-note">Unidades com quantidade registrada aparecem primeiro.</p>
+    {% endif %}
+  {% else %}
+    <p class="empty-units">{{ icon('info') }} A fonte não retornou unidades para este medicamento nesta consulta.</p>
+  {% endif %}
+</article>
+{% endmacro %}
+
+{% macro catalog_row(product) %}
+<article class="catalog-row">
+  <span class="catalog-medicine-icon">{{ icon('pill') }}</span>
+  <div class="catalog-medicine-copy">
+    <span class="product-code">CÓDIGO {{ product.product_id }}</span>
+    <strong>{{ product.name }}</strong>
+    <small>{{ product.supply_unit or 'Apresentação não informada' }}</small>
+  </div>
+  <span class="catalog-availability{% if product.has_available %} is-available{% endif %}">
+    {{ product.availability_label }}
+  </span>
+  <a class="catalog-link" href="{{ url_for('index', q=product.name) }}">Ver unidades {{ icon('arrow-right') }}</a>
+</article>
+{% endmacro %}
+
+{% macro pagination(page_number, page_count, page_numbers, query, unit_query, show_catalog, sort_key) %}
+{% if page_count > 1 %}
+  <nav class="pagination" aria-label="Paginação dos resultados">
+    {% if page_number > 1 %}
+      <a class="pagination-step" href="{{ url_for('index', q=query or none, unidade=unit_query or none, catalogo='1' if show_catalog else none, ordem=sort_key if sort_key != 'relevancia' else none, pagina=page_number - 1) }}" rel="prev">← Anterior</a>
+    {% else %}
+      <span class="pagination-step is-disabled">← Anterior</span>
+    {% endif %}
+    <span class="pagination-pages">
+      {% for page in page_numbers %}
+        {% if page is none %}
+          <span class="pagination-gap" aria-hidden="true">…</span>
+        {% elif page == page_number %}
+          <span class="pagination-page is-current" aria-current="page">{{ page }}</span>
+        {% else %}
+          <a class="pagination-page" href="{{ url_for('index', q=query or none, unidade=unit_query or none, catalogo='1' if show_catalog else none, ordem=sort_key if sort_key != 'relevancia' else none, pagina=page) }}">{{ page }}</a>
+        {% endif %}
+      {% endfor %}
+    </span>
+    {% if page_number < page_count %}
+      <a class="pagination-step" href="{{ url_for('index', q=query or none, unidade=unit_query or none, catalogo='1' if show_catalog else none, ordem=sort_key if sort_key != 'relevancia' else none, pagina=page_number + 1) }}" rel="next">Próxima →</a>
+    {% else %}
+      <span class="pagination-step is-disabled">Próxima →</span>
+    {% endif %}
+  </nav>
+{% endif %}
+{% endmacro %}
+
+{% macro directory_item(unit) %}
+<li
+  class="directory-row"
+  data-directory-unit="{{ unit.unit_id }}"
+  data-directory-search="{{ unit.name }} {{ unit.address }}"
+  data-directory-mapped="{{ 'true' if unit.has_map_location else 'false' }}">
+  <div class="directory-unit">
+    <div class="directory-title">
+      <strong>{{ unit.name }}</strong>
+      <span class="unit-map-badge{% if unit.has_map_location %} is-mapped{% else %} is-unmapped{% endif %}">
+        {{ icon('pin' if unit.has_map_location else 'search') }}
+        {{ 'Com pino no mapa' if unit.has_map_location else 'Sem pino' }}
+      </span>
+    </div>
+    <span class="directory-address">{{ unit.address if unit.address else 'Endereço não informado na fonte' }}</span>
+    <div class="directory-meta">
+      {% if unit.phone %}<a href="{{ unit.phone | phone_href }}">{{ icon('phone') }}<span>{{ unit.phone }}</span></a>{% endif %}
+      <small>{{ unit.available_product_count }} de {{ unit.product_count }} medicamentos com quantidade positiva na consulta</small>
+    </div>
+  </div>
+  <button
+    class="map-unit-button"
+    type="button"
+    data-map-unit="{{ unit.unit_id }}"
+    data-map-name="{{ unit.name }}"
+    data-map-address="{{ unit.address }}">
+    {{ icon('locate') }}
+    <span>{{ 'Localizar no mapa' if unit.has_map_location else 'Pesquisar no Google Maps' }}</span>
+  </button>
+</li>
+{% endmacro %}

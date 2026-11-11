@@ -18,10 +18,12 @@ Faça primeiro 5 a 8 sessões curtas e individuais, buscando diversidade: pessoa
 Peça à pessoa para:
 
 1. encontrar um medicamento fictício indicado pelo facilitador;
-2. identificar qual unidade aparece com quantidade positiva;
-3. encontrar endereço e telefone da unidade;
-4. explicar com suas palavras quando os dados foram consultados e o que esse horário garante (ou não);
-5. explicar o que faria antes de se deslocar até a unidade.
+2. usar as sugestões de busca com o teclado (setas e Enter) e concluir a busca;
+3. identificar qual unidade aparece com quantidade positiva e filtrar os resultados por essa unidade;
+4. encontrar endereço e telefone da unidade;
+5. abrir o diretório de unidades, pesquisar uma unidade e explicar a diferença entre “Com pino no mapa” e “Sem pino”;
+6. explicar com suas palavras quando os dados foram consultados e o que esse horário garante (ou não);
+7. explicar o que faria antes de se deslocar até a unidade.
 
 Não conduza a pessoa até a resposta durante a primeira tentativa. Registre se concluiu sem ajuda, onde hesitou e os termos que causaram dúvida.
 
@@ -42,6 +44,7 @@ Para cada sessão, registre somente: código aleatório da sessão, perfil amplo
 - Pelo menos 4 de 5 participantes conseguem localizar o resultado solicitado sem ajuda.
 - Todas as pessoas participantes entendem que o horário mostrado é o da consulta à fonte, não uma garantia de atualização do estoque.
 - Todas localizam como confirmar com a unidade antes do deslocamento.
+- Pessoas que usam teclado conseguem abrir as sugestões, navegar com as setas, selecionar com Enter e remover filtros ativos.
 - Barreiras de leitura, navegação por teclado e uso em tela móvel são registradas e priorizadas antes de divulgar o serviço.
 
 Se qualquer pessoa interpretar os dados como garantia de disponibilidade atual, revise os avisos e repita o teste antes de ampliar a divulgação. Registre limitações da amostra; não generalize os resultados como impacto municipal.

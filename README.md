@@ -64,10 +64,20 @@ vivver-estoque-mvp/
 │   ├── load/
 │   │   └── load.py
 │   ├── pipeline.py
+│   ├── presentation.py
+│   ├── snapshot_store.py
 │   ├── web.py
-│   └── template/stock.html
+│   ├── template/
+│   │   ├── stock.html
+│   │   └── _macros.html
+│   └── static/
+│       ├── styles.css
+│       ├── search.js
+│       └── unit_locations.json
 ├── tests/
 │   ├── fixtures/estoque_sample.html
+│   ├── fixtures/stock_demo.json
+│   ├── test_mvp.py
 │   └── test_normalize.py
 └── requirements.txt
 ```
@@ -101,6 +111,8 @@ python -m src.extract.collector
 
 O coletor consulta o endpoint configurado do Vivver com timeout e retentativas limitadas, guarda a resposta bruta em `data/raw/`, valida o contrato e publica atomicamente `data/processed/public_snapshot.json`. A interface lê diretamente a captura JSON `.txt` válida mais recente em `data/raw/`, pela data embutida no nome do arquivo; ignora `.txt` que não tenham o formato JSON esperado e ignora também uma captura gerada por `--fixture`, identificada pelo status da coleta mesmo que tenha timestamp no nome. Se a captura mais recente tiver menos da metade dos medicamentos de uma captura válida anterior com pelo menos 50 produtos, a interface mantém a maior captura e avisa que ela pode estar desatualizada. O snapshot processado é usado como fallback se nenhuma captura bruta válida estiver disponível. O resultado de cada tentativa fica em `data/processed/collection_status.json`. Se uma coleta falhar, o snapshot válido anterior é preservado e a interface sinaliza a falha.
 
+A orquestração dessas etapas fica em `StockCollectionPipeline`, em `src.extract.collector`: `extract` obtém a resposta, `transform` valida e normaliza os dados, e `load` publica o snapshot e o status. Cada etapa continua usando os módulos especializados do projeto.
+
 As capturas preexistentes são históricas: a interface usa o timestamp do nome do arquivo (ou, se ausente, a data de modificação) como horário da captura, não como confirmação de atualização do estoque na unidade. Execute uma coleta nova antes de divulgar os resultados.
 
 O MVP publica apenas o Vivver como fonte de estoque. A coleta usa o adaptador `src.extract.sources.VivverSource`, que mantém a identidade da fonte separada da validação do snapshot. Isso permite adicionar fontes autorizadas no futuro sem somar estoques ou escolher silenciosamente entre respostas divergentes; cadastros, mapas e compras devem continuar como fontes complementares, não como prova de disponibilidade.
@@ -129,9 +141,21 @@ Inicie o servidor local. Este comando mantém o terminal ocupado enquanto a apli
 python -m src.web
 ```
 
-Abra [http://127.0.0.1:8000](http://127.0.0.1:8000). A aplicação oferece sugestões de medicamentos enquanto a pessoa digita, um dropdown para filtrar por unidade e catálogo paginado. Também mostra quantidades e contatos retornados pela fonte e informa o horário da consulta. Ao final, o mapa interativo destaca apenas as unidades relacionadas a pontos documentados em `src/static/unit_locations.json`; para as demais, oferece pesquisa externa pelo nome e endereço, sem inventar pinos. O mapa usa Leaflet e tiles do OpenStreetMap, com atribuição visível. Em implantação, configure `HOST=0.0.0.0` e `PORT`; `APP_STALE_AFTER_HOURS` ajusta o limite operacional do aviso de desatualização (padrão: 24 horas, não é SLA oficial). Execute o coletor periodicamente por um mecanismo operacional apropriado e monitore `collection_status.json`; o projeto ainda não configura agendamento automático.
+Abra [http://127.0.0.1:8000](http://127.0.0.1:8000). A aplicação oferece sugestões acessíveis de medicamentos enquanto a pessoa digita, filtro por unidade, catálogo paginado, ordenação por relevância, nome ou quantidade de unidades com estoque, resumo de disponibilidade por medicamento e filtros ativos removíveis. Também mostra quantidades e contatos retornados pela fonte e informa o horário da consulta. O mapa interativo destaca apenas as unidades relacionadas a pontos documentados em `src/static/unit_locations.json`; para as demais, oferece pesquisa externa pelo nome e endereço, sem inventar pinos. O diretório de unidades fica recolhido por padrão, pode ser filtrado junto com o mapa e permite limitar a lista às unidades com pino. O mapa usa Leaflet e tiles do OpenStreetMap, com atribuição visível. Em implantação, configure `HOST=0.0.0.0` e `PORT`; `APP_STALE_AFTER_HOURS` ajusta o limite operacional do aviso de desatualização (padrão: 24 horas, não é SLA oficial). Execute o coletor periodicamente por um mecanismo operacional apropriado e monitore `collection_status.json`; o projeto ainda não configura agendamento automático.
 
-A busca oferece sugestões de medicamentos após duas letras e o filtro de unidades lista unidades presentes nos resultados correspondentes. O mapa não comprova estoque nem substitui a confirmação do endereço e da disponibilidade com a unidade. Os pontos mapeados vêm do OpenStreetMap; os endereços operacionais vêm do conjunto de estoque do Vivver e podem divergir. A tela sinaliza unidades sem coordenadas verificadas e permite pesquisá-las no Google Maps.
+### Publicar no Render
+
+O arquivo `render.yaml` configura um serviço web Python com Waitress e deploy automático a cada atualização da branch `master`. Para publicar:
+
+1. Envie o repositório ao GitHub e autorize o Render a acessá-lo.
+2. No Render, crie um **Blueprint** e selecione `JhonatanMotaDev/medi-moc`; confirme o serviço gratuito `medi-moc`.
+3. Após o deploy, use o endereço público `https://medi-moc.onrender.com` (o Render também mostra o endereço atribuído no painel).
+
+O snapshot inicial em `data/processed/public_snapshot.json` permite que o site já abra com dados; ele é uma captura histórica e a página sinaliza sua idade. O projeto não atualiza os dados automaticamente após a publicação: execute uma coleta autorizada e publique o snapshot atualizado para renovar a consulta. O site não exige conta para consulta; autenticação de usuários não está implementada.
+
+Antes de disponibilizar publicamente, confirme que a autorização acadêmica também cobre a coleta automatizada e a republicação dos campos na aplicação.
+
+A busca oferece sugestões de medicamentos após duas letras e o filtro de unidades lista unidades com quantidade positiva nos resultados correspondentes; sem busca, lista todas as unidades. A camada `src.presentation` transforma o snapshot validado em um modelo de tela sem alterar os dados, e `src.snapshot_store.SnapshotRepository` reutiliza a leitura enquanto os arquivos de origem não mudam. O mapa não comprova estoque nem substitui a confirmação do endereço e da disponibilidade com a unidade. Os pontos mapeados vêm do OpenStreetMap; os endereços operacionais vêm do conjunto de estoque do Vivver e podem divergir. A tela sinaliza unidades sem pino documentado e permite pesquisá-las no Google Maps.
 
 Antes de disponibilizar publicamente, confirme que a autorização acadêmica também cobre a coleta automatizada e a republicação dos campos na aplicação. A tela distingue o horário de consulta do horário de atualização do estoque na unidade: a fonte consultada não fornece este último. A página orienta as pessoas a confirmar diretamente com a unidade antes do deslocamento.
 

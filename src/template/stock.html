@@ -4,13 +4,32 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="theme-color" content="#f5f7f5">
-    <meta name="description" content="Consulte registros públicos de disponibilidade de medicamentos nas unidades de saúde de Montes Claros.">
-    <title>Medicamentos na rede pública | Montes Claros</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css', v='22') }}">
+    <meta name="description" content="Consulte registros públicos de disponibilidade de medicamentos nas unidades de saúde.">
+    <title>Medicamentos na rede pública | Medi Moc</title>
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='medi-moc-logo.svg') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css', v='27') }}">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
   </head>
   <body>
+    {% from "_macros.html" import icon, medicine_card, catalog_row, pagination, directory_item %}
+
+    <svg class="icon-sprite" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg">
+      <symbol id="icon-search" viewBox="0 0 24 24"><circle cx="10.8" cy="10.8" r="6.8"/><path d="m16 16 4.2 4.2"/></symbol>
+      <symbol id="icon-pill" viewBox="0 0 24 24"><path d="M10.5 3.5a5 5 0 0 1 7.07 7.07l-6.36 6.36a5 5 0 0 1-7.07-7.07zM8 8l8 8"/></symbol>
+      <symbol id="icon-pin" viewBox="0 0 24 24"><path d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="2.5"/></symbol>
+      <symbol id="icon-phone" viewBox="0 0 24 24"><path d="M7.5 4.5h2l1.2 4-1.7 1.7a14.5 14.5 0 0 0 4.8 4.8l1.7-1.7 4 1.2v2c0 1.1-.9 2-2 2C11.1 18.5 5.5 12.9 5.5 6.5c0-1.1.9-2 2-2Z"/></symbol>
+      <symbol id="icon-map" viewBox="0 0 24 24"><path d="m9 18-6 3V6l6-3 6 3 6-3v15l-6 3z"/><path d="M9 3v15M15 6v15"/></symbol>
+      <symbol id="icon-locate" viewBox="0 0 24 24"><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></symbol>
+      <symbol id="icon-check" viewBox="0 0 24 24"><path d="m5 12 4.5 4.5L19 7"/></symbol>
+      <symbol id="icon-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></symbol>
+      <symbol id="icon-arrow-right" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></symbol>
+      <symbol id="icon-arrow-up-right" viewBox="0 0 24 24"><path d="M7 17 17 7M8 7h9v9"/></symbol>
+      <symbol id="icon-chevron-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+      <symbol id="icon-x" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></symbol>
+    </svg>
+
     <a class="skip-link" href="#search-section">Ir direto para a busca</a>
+
     <header class="site-header">
       <div class="header-inner">
         <a class="brand" href="/" aria-label="Medi Moc — página inicial">
@@ -19,13 +38,9 @@
           </span>
           <span class="brand-copy"><strong>Medi Moc</strong></span>
         </a>
-        <div class="header-right">
-          <span class="municipality"><span class="pin-dot" aria-hidden="true"></span> Montes Claros <span class="state">MG</span></span>
-          <nav class="header-actions" aria-label="Ações principais">
-            <a class="header-search-link" href="#search-section">Buscar medicamento</a>
-            <a class="source-shortcut" href="{{ source_url }}" target="_blank" rel="noopener noreferrer">Consultar fonte oficial <span aria-hidden="true">↗</span></a>
-          </nav>
-        </div>
+        <nav class="header-actions" aria-label="Fonte dos dados">
+          <a class="source-shortcut" href="{{ source_page_url }}" target="_blank" rel="noopener noreferrer">Conferir fonte oficial {{ icon('arrow-up-right') }}</a>
+        </nav>
       </div>
     </header>
 
@@ -34,219 +49,239 @@
         <section class="hero" aria-labelledby="page-title">
           <div class="hero-copy-block">
             <h1 id="page-title">Medicamentos na rede pública</h1>
-            <p class="hero-description">Consulte os registros de estoque de Montes Claros.</p>
+            <p class="hero-description">Consulte onde cada medicamento aparece com quantidade registrada nas unidades de saúde.</p>
           </div>
 
-          <div class="search-card" id="search-section">
+          <div class="search-card" id="search-section" tabindex="-1">
             <div class="search-card-label">Qual medicamento você procura?</div>
             <form class="search-panel" action="/" method="get" role="search">
               <div class="medicine-field">
                 <label class="visually-hidden" for="medicine-search">Medicamento</label>
-                <span class="medicine-search-icon" aria-hidden="true">
-                  <svg viewBox="0 0 24 24"><circle cx="10.8" cy="10.8" r="6.8"/><path d="m16 16 4.2 4.2"/></svg>
-                </span>
-                <input id="medicine-search" name="q" type="search" value="{{ query }}" placeholder="Digite o nome do medicamento" autocomplete="off" list="medicine-suggestions" aria-describedby="search-help">
-                <datalist id="medicine-suggestions"></datalist>
+                <span class="medicine-search-icon">{{ icon('search') }}</span>
+                <input
+                  id="medicine-search"
+                  name="q"
+                  type="search"
+                  value="{{ query }}"
+                  placeholder="Digite o nome do medicamento"
+                  autocomplete="off"
+                  role="combobox"
+                  aria-autocomplete="list"
+                  aria-haspopup="listbox"
+                  aria-expanded="false"
+                  aria-controls="medicine-suggestions"
+                  aria-describedby="search-help"
+                >
+                <button class="field-clear" id="medicine-clear" type="button" aria-label="Limpar medicamento" hidden>{{ icon('x') }}</button>
+                <div class="suggestions" id="medicine-suggestions" role="listbox" aria-label="Sugestões de medicamentos" hidden></div>
               </div>
               <button class="search-button" type="submit">Buscar</button>
-              <details class="unit-filter">
-                <summary>
+              <p class="search-status visually-hidden" id="search-status" role="status" aria-live="polite"></p>
+
+              <div class="search-filters">
+                <label class="filter-field" for="unit-search">
                   <span class="filter-label">Filtrar por unidade</span>
-                  <span class="filter-optional">Opcional</span>
-                  <span class="filter-chevron" aria-hidden="true"></span>
-                </summary>
-                <div class="unit-field">
-                  <label class="visually-hidden" for="unit-search">Filtrar por unidade</label>
-                  <span class="field-icon" aria-hidden="true">⌖</span>
-                  <select id="unit-search" name="unidade" aria-label="Filtrar resultados por unidade">
-                    <option value="">Todas as unidades</option>
-                    {% for unit in unit_options %}
-                      <option value="{{ unit.unit_id }}"{% if unit_query == unit.unit_id %} selected{% endif %}>{{ unit.name }}</option>
-                    {% endfor %}
-                  </select>
-                  <span class="select-chevron" aria-hidden="true"></span>
-                </div>
-              </details>
+                  <span class="select-wrap">
+                    <select id="unit-search" name="unidade" data-autosubmit>
+                      <option value="">Todas as unidades</option>
+                      {% for unit in unit_options %}
+                        <option value="{{ unit.unit_id }}"{% if unit_query == unit.unit_id %} selected{% endif %}>{{ unit.name }}</option>
+                      {% endfor %}
+                    </select>
+                    {{ icon('chevron-down') }}
+                  </span>
+                </label>
+                {% if query or unit_query %}
+                  <a class="filter-reset" href="/">Limpar filtros {{ icon('x') }}</a>
+                {% endif %}
+              </div>
             </form>
-            <p class="search-help" id="search-help">Você pode digitar o nome completo ou apenas uma parte.</p>
+            <p class="search-help" id="search-help">Você pode digitar o nome completo ou apenas uma parte. As sugestões aparecem após 2 letras.</p>
+            <noscript><p class="search-help">As sugestões automáticas precisam de JavaScript. A busca por nome continua disponível.</p></noscript>
           </div>
         </section>
 
-        <section class="freshness-banner {{ freshness.tone }}" aria-live="polite">
+        <section class="freshness-banner {{ freshness.tone }}" aria-label="Atualidade dos dados">
           <span class="freshness-dot" aria-hidden="true"></span>
-          <strong>{{ freshness.label }}</strong>
-          <span class="freshness-date">
-            {% if freshness.collected_at %}
-              Consulta em <time datetime="{{ freshness.collected_at }}">{{ freshness.collected_at | replace('T', ' ') | replace('+00:00', ' UTC') | replace('Z', ' UTC') }}</time>
-            {% else %}
-              Horário da consulta indisponível
-            {% endif %}
-          </span>
+          <div class="freshness-copy">
+            <strong>{{ freshness.label }}</strong>
+            <span class="freshness-date">
+              {% if freshness.collected_at %}
+                Consulta em <time datetime="{{ freshness.collected_at }}">{{ freshness.collected_at | replace('T', ' ') | replace('+00:00', ' UTC') | replace('Z', ' UTC') }}</time>
+              {% else %}
+                Horário da consulta indisponível
+              {% endif %}
+              {% if freshness.relative_label %}<span class="freshness-relative">· {{ freshness.relative_label }}</span>{% endif %}
+            </span>
+          </div>
           <details class="freshness-details">
             <summary>Detalhes</summary>
             <p>{{ freshness.note }} O limite de {{ freshness.threshold_hours }} horas é um aviso da plataforma, não um prazo oficial.</p>
-            <a href="{{ source_url }}" target="_blank" rel="noopener noreferrer">Fonte oficial ↗</a>
+            <p>Fonte: {{ source_name }}.</p>
           </details>
         </section>
+
+        {% if not query and not unit_query and not show_catalog %}
+          <p class="summary-strip">
+            <span><strong>{{ product_count }}</strong> medicamentos</span>
+            <span><strong>{{ available_medicine_count }}</strong> com quantidade em alguma unidade</span>
+            <span><strong>{{ unit_count }}</strong> unidades</span>
+            <span><strong>{{ mapped_count }}</strong> com pino no mapa</span>
+            <a href="{{ url_for('index', catalogo='1', pagina=1) }}">Ver catálogo completo {{ icon('arrow-right') }}</a>
+          </p>
+        {% endif %}
 
         {% if query or unit_query or show_catalog %}
           <section class="results-section" aria-labelledby="results-title">
             <div class="section-heading">
-              <div><p class="eyebrow">{% if show_catalog %}CATÁLOGO DA CONSULTA{% else %}RESULTADO DA PESQUISA{% endif %}</p><h2 id="results-title">{% if result_count %}{% if show_catalog %}Medicamentos consultados{% else %}Medicamentos encontrados{% endif %}{% else %}Não encontramos resultados{% endif %}</h2></div>
+              <div>
+                <p class="eyebrow">{% if show_catalog %}CATÁLOGO DA CONSULTA{% elif query %}RESULTADO DA PESQUISA{% else %}UNIDADE SELECIONADA{% endif %}</p>
+                <h2 id="results-title">{% if result_count %}{% if show_catalog %}Medicamentos consultados{% elif query %}Medicamentos encontrados{% else %}Medicamentos nesta unidade{% endif %}{% else %}Não encontramos resultados{% endif %}</h2>
+              </div>
               <div class="results-actions">
                 <span class="result-count">{{ result_count }} medicamento{% if result_count != 1 %}s{% endif %}{% if result_count %} · página {{ page_number }} de {{ page_count }}{% endif %}</span>
-                <a class="clear-link" href="/">Limpar filtros <span aria-hidden="true">×</span></a>
+                <a class="clear-link" href="/">Limpar filtros {{ icon('x') }}</a>
               </div>
             </div>
 
+            {% if query or unit_query %}
+              <div class="active-filters" role="group" aria-label="Filtros ativos">
+                {% if query %}
+                  <a class="filter-chip" href="{{ url_for('index', unidade=unit_query or none, ordem=sort_key if sort_key != 'relevancia' else none) }}">
+                    Busca: “{{ query }}” {{ icon('x') }}
+                  </a>
+                {% endif %}
+                {% if unit_query %}
+                  <a class="filter-chip" href="{{ url_for('index', q=query or none, ordem=sort_key if sort_key != 'relevancia' else none) }}">
+                    Unidade: {{ unit_query_name or unit_query }} {{ icon('x') }}
+                  </a>
+                {% endif %}
+              </div>
+            {% endif %}
+
+            {% if result_count > 1 %}
+              <form class="sort-form" method="get" action="/" aria-label="Ordenação dos resultados">
+                {% if query %}<input type="hidden" name="q" value="{{ query }}">{% endif %}
+                {% if unit_query %}<input type="hidden" name="unidade" value="{{ unit_query }}">{% endif %}
+                {% if show_catalog %}<input type="hidden" name="catalogo" value="1">{% endif %}
+                <label for="sort-select">Ordenar por</label>
+                <span class="select-wrap">
+                  <select id="sort-select" name="ordem" data-autosubmit>
+                    {% for key, label in sort_options %}
+                      <option value="{{ key }}"{% if sort_key == key %} selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                  </select>
+                  {{ icon('chevron-down') }}
+                </span>
+              </form>
+            {% endif %}
+
             {% if not result_count %}
               <div class="no-results">
-                <span class="no-results-icon" aria-hidden="true">⌕</span>
+                <span class="no-results-icon">{{ icon('search') }}</span>
                 <h3>Tente outra forma de busca</h3>
                 <p>Confira a escrita ou pesquise por uma parte menor do nome do medicamento. Você também pode remover o filtro de unidade.</p>
-                <a href="/">Ver todos os medicamentos</a>
+                <div class="no-results-actions">
+                  <a class="button-secondary" href="/">Limpar filtros</a>
+                  <a class="button-link" href="{{ url_for('index', catalogo='1', pagina=1) }}">Ver catálogo completo {{ icon('arrow-right') }}</a>
+                </div>
               </div>
             {% endif %}
 
             <div class="medicine-results">
               {% for product in products %}
                 {% if show_catalog %}
-                  <article class="catalog-row">
-                    <span class="catalog-medicine-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M10.5 3.5a5 5 0 0 1 7.07 7.07l-6.36 6.36a5 5 0 0 1-7.07-7.07zM8 8l8 8"/></svg></span>
-                    <div class="catalog-medicine-copy">
-                      <span class="product-code">CÓDIGO {{ product.product_id }}</span>
-                      <strong>{{ product.name }}</strong>
-                      <small>{{ product.supply_unit or 'Apresentação não informada' }}</small>
-                    </div>
-                    <span class="catalog-availability">{{ product.units | length }} unidade{% if product.units | length != 1 %}s{% endif %}</span>
-                    <a class="catalog-link" href="{{ url_for('index', q=product.name) }}">Ver unidades <span aria-hidden="true">→</span></a>
-                  </article>
+                  {{ catalog_row(product) }}
                 {% else %}
-                  <article class="medicine-card">
-                  <div class="medicine-card-top">
-                    <div class="medicine-title-group">
-                      <span class="medicine-symbol" aria-hidden="true">
-                        <svg viewBox="0 0 24 24"><path d="M10.5 3.5a5 5 0 0 1 7.07 7.07l-6.36 6.36a5 5 0 0 1-7.07-7.07zM8 8l8 8"/></svg>
-                      </span>
-                      <div><p class="product-code">CÓDIGO {{ product.product_id }}</p><h3>{{ product.name }}</h3>
-                        {% if product.supply_unit %}<p class="supply">{{ product.supply_unit }}</p>{% endif %}
-                      </div>
-                    </div>
-                    <span class="result-pill">{{ product.units | length }} unidade{% if product.units | length != 1 %}s{% endif %}</span>
-                  </div>
-
-                  {% if product.units %}
-                    <div class="unit-list">
-                      {% for unit in product.units %}
-                        <div class="unit-row">
-                          <span class="unit-marker" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="2.5"/></svg></span>
-                          <div class="unit-info">
-                            <strong>{{ unit.name }}</strong>
-                            {% if unit.address %}<span class="unit-address">{{ unit.address }}</span>{% endif %}
-                            {% if unit.phone %}<a class="unit-phone" href="{{ unit.phone | phone_href }}"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M7.5 4.5h2l1.2 4-1.7 1.7a14.5 14.5 0 0 0 4.8 4.8l1.7-1.7 4 1.2v2c0 1.1-.9 2-2 2C11.1 18.5 5.5 12.9 5.5 6.5c0-1.1.9-2 2-2Z"/></svg><span>{{ unit.phone }}</span></a>{% endif %}
-                          </div>
-                          {% if unit.quantity > 0 %}
-                            <span class="stock-badge in-stock"><span class="stock-dot" aria-hidden="true"></span><strong>{{ unit.quantity }}</strong> {{ product.supply_unit or 'un.' }} registrados</span>
-                          {% else %}
-                            <span class="stock-badge out-stock"><span class="stock-dot" aria-hidden="true"></span>Sem quantidade registrada</span>
-                          {% endif %}
-                        </div>
-                      {% endfor %}
-                    </div>
-                  {% else %}
-                    <p class="empty-units">A fonte não retornou unidades para este medicamento nesta consulta.</p>
-                  {% endif %}
-                  </article>
+                  {{ medicine_card(product) }}
                 {% endif %}
               {% endfor %}
             </div>
-            {% if page_count > 1 %}
-              <nav class="pagination" aria-label="Paginação do catálogo">
-                {% if page_number > 1 %}
-                  <a href="{{ url_for('index', q=query, unidade=unit_query, catalogo='1' if show_catalog else none, pagina=page_number - 1) }}">← Anterior</a>
-                {% else %}
-                  <span class="pagination-disabled">← Anterior</span>
-                {% endif %}
-                <span>Página {{ page_number }} de {{ page_count }}</span>
-                {% if page_number < page_count %}
-                  <a href="{{ url_for('index', q=query, unidade=unit_query, catalogo='1' if show_catalog else none, pagina=page_number + 1) }}">Próxima →</a>
-                {% else %}
-                  <span class="pagination-disabled">Próxima →</span>
-                {% endif %}
-              </nav>
-            {% endif %}
+
+            {{ pagination(page_number, page_count, page_numbers, query, unit_query, show_catalog, sort_key) }}
           </section>
-        {% else %}
-          <p class="catalog-cta"><span>{{ product_count }} medicamentos</span><a href="{{ url_for('index', catalogo='1', pagina=1) }}">Ver catálogo completo →</a></p>
         {% endif %}
 
-        {% set locations = map_units if map_units is defined and map_units else unit_options %}
         <section class="unit-map-section" aria-labelledby="unit-map-title">
           <div class="unit-map-heading">
-            <h2 id="unit-map-title">Unidades de saúde</h2>
-            <span>{{ locations | length }} locais</span>
+            <div>
+              <p class="eyebrow">ONDE FICA</p>
+              <h2 id="unit-map-title">Unidades de saúde</h2>
+            </div>
+            <span>{{ unit_count }} unidades</span>
           </div>
+
           <div class="map-controls">
-            <label class="visually-hidden" for="map-unit-search">Pesquisar unidade no mapa</label>
-            <input id="map-unit-search" class="map-unit-search" type="search" placeholder="Pesquisar unidade ou bairro" autocomplete="off" list="map-unit-suggestions">
+            <label class="map-search-field" for="map-unit-search">
+              <span class="visually-hidden">Pesquisar unidade no mapa</span>
+              {{ icon('search') }}
+              <input id="map-unit-search" class="map-unit-search" type="search" placeholder="Pesquisar unidade ou bairro" autocomplete="off" list="map-unit-suggestions">
+            </label>
             <datalist id="map-unit-suggestions">
-              {% for unit in locations %}
-                <option value="{{ unit.name }}">{{ unit.address if unit.address is defined and unit.address else '' }}</option>
+              {% for unit in map_units %}
+                <option value="{{ unit.name }}">{{ unit.address if unit.address else '' }}</option>
               {% endfor %}
             </datalist>
-            <button id="map-my-location" class="map-action-button" type="button">Usar minha localização</button>
+            <label class="map-select-field" for="map-unit-select">
+              <span class="visually-hidden">Ir para uma unidade</span>
+              <span class="select-wrap">
+                <select id="map-unit-select">
+                  <option value="">Ir para uma unidade…</option>
+                  {% for unit in map_units %}
+                    <option value="{{ unit.unit_id }}">{{ unit.name }}</option>
+                  {% endfor %}
+                </select>
+                {{ icon('chevron-down') }}
+              </span>
+            </label>
+            <button id="map-my-location" class="map-action-button" type="button">{{ icon('locate') }} Usar minha localização</button>
+            <label class="map-toggle">
+              <input type="checkbox" id="map-filter-mapped">
+              <span>Somente com pino</span>
+            </label>
           </div>
-          <div id="unit-map" class="unit-map-frame" data-locations-url="{{ url_for('static', filename='unit_locations.json') }}" role="application" aria-label="Mapa interativo das unidades com localização verificada"></div>
-          <p class="map-location-note" id="map-location-note">Carregando locais verificados...</p>
-          <a class="map-external-link" id="map-external-link" href="https://www.google.com/maps/search/?api=1&amp;query=UBS+Montes+Claros+MG" target="_blank" rel="noopener noreferrer" hidden>Pesquisar esta unidade no Google Maps ↗</a>
-          <details class="unit-directory" open>
-            <summary>Ver unidades e informações</summary>
-            <ul>
-              {% for unit in locations %}
-                <li data-directory-unit="{{ unit.unit_id }}" data-directory-search="{{ unit.name }} {{ unit.address }}">
-                  <div class="directory-unit">
-                    <strong>{{ unit.name }}</strong>
-                    <span>{{ unit.address if unit.address is defined and unit.address else 'Endereço não informado na fonte' }}</span>
-                    {% if unit.phone %}<a href="{{ unit.phone | phone_href }}">{{ unit.phone }}</a>{% endif %}
-                    {% if unit.available_product_count is defined %}
-                      <small>{{ unit.available_product_count }} medicamentos com quantidade positiva na consulta</small>
-                    {% else %}
-                      <small>Consulte a disponibilidade na busca de medicamentos.</small>
-                    {% endif %}
-                  </div>
-                  <button
-                    class="map-unit-button"
-                    type="button"
-                    data-map-unit="{{ unit.unit_id }}"
-                    data-map-name="{{ unit.name }}"
-                    data-map-address="{{ unit.address if unit.address is defined else '' }}">
-                    Localizar
-                  </button>
-                </li>
+
+          <div class="map-legend" role="group" aria-label="Legenda do mapa">
+            <span><i class="map-legend-dot verified" aria-hidden="true"></i> Ponto publicado/verificado</span>
+            <span><i class="map-legend-dot provisional" aria-hidden="true"></i> Localização provisória por endereço</span>
+          </div>
+
+          <div id="unit-map" class="unit-map-frame" data-locations-url="{{ url_for('static', filename='unit_locations.json') }}" role="region" aria-label="Mapa interativo das unidades de saúde"></div>
+          <noscript><p class="map-location-note">O mapa interativo precisa de JavaScript. Use o diretório de unidades abaixo para consultar endereços e telefones.</p></noscript>
+          <p class="map-location-note" id="map-location-note" role="status" aria-live="polite">{{ mapped_count }} de {{ unit_count }} unidades aparecem mapeadas no OpenStreetMap. Selecione uma unidade para ver o ponto ou use a pesquisa.</p>
+          <a class="map-external-link" id="map-external-link" href="https://www.google.com/maps/search/?api=1&amp;query=UBS+Montes+Claros+MG" target="_blank" rel="noopener noreferrer" hidden>Pesquisar esta unidade no Google Maps {{ icon('arrow-up-right') }}</a>
+
+          <details class="unit-directory">
+            <summary>
+              <span>Ver diretório de unidades</span>
+              <span class="directory-summary-meta">{{ unit_count }} unidades</span>
+            </summary>
+            <div class="directory-toolbar">
+              <p id="directory-count">{{ unit_count }} unidades listadas. Use a pesquisa acima para filtrar.</p>
+              <p id="directory-empty" class="directory-empty" hidden>Nenhuma unidade corresponde à pesquisa.</p>
+            </div>
+            <ul class="directory-list">
+              {% for unit in map_units %}
+                {{ directory_item(unit) }}
               {% endfor %}
             </ul>
           </details>
-          <p class="map-attribution">Os endereços vêm da fonte de estoque. Alguns pinos são provisórios; confirme o local com a unidade antes de se deslocar.</p>
+
+          <p class="map-attribution">Os endereços vêm da fonte de estoque. Alguns pinos são provisórios; confirme o local com a unidade antes de se deslocar. O mapa usa dados do OpenStreetMap e não confirma disponibilidade de medicamentos.</p>
         </section>
 
       {% else %}
         <section class="empty-state">
-          <span class="empty-state-symbol" aria-hidden="true">+</span>
+          <span class="empty-state-symbol">{{ icon('info') }}</span>
           <p class="eyebrow">CONSULTA DE MEDICAMENTOS</p>
           <h1 id="page-title">Estamos preparando a consulta.</h1>
           <p>Não há uma captura válida disponível no momento. Você pode consultar a informação diretamente na fonte oficial.</p>
-          <a class="primary-link" href="{{ source_url }}" target="_blank" rel="noopener noreferrer">Abrir portal oficial <span aria-hidden="true">↗</span></a>
+          <a class="button-primary" href="{{ source_page_url }}" target="_blank" rel="noopener noreferrer">Abrir portal oficial {{ icon('arrow-up-right') }}</a>
         </section>
       {% endif %}
     </main>
 
-    <footer class="site-footer">
-      <div class="footer-inner">
-        <div class="footer-brand"><strong>Medi Moc</strong><span>Montes Claros, MG</span></div>
-        <div class="footer-links"><a href="{{ source_url }}" target="_blank" rel="noopener noreferrer">Fonte: Vivver ↗</a></div>
-      </div>
-    </footer>
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" defer></script>
-    <script src="{{ url_for('static', filename='search.js', v='16') }}" defer></script>
+    <script src="{{ url_for('static', filename='search.js', v='19') }}" defer></script>
   </body>
 </html>

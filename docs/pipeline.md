@@ -22,6 +22,17 @@ dim_produto.csv + dim_unidade.csv + fato_estoque.csv + transform_log.json
 
 O repositório também tem a rota `src.pipeline`, que usa `src.transform.parse`, `src.transform.normalize`, `src.transform.quality` e `src.load.load`. Ela preserva o raw, mas escreve uma representação tabular diferente em `estoque_montes_claros.csv` e, se o suporte estiver instalado, em `estoque_montes_claros.parquet`. Como `src.pipeline` não invoca `src.transform.transform`, as duas rotas não devem ser tratadas como uma única execução encadeada.
 
+### Orquestração da coleta pública
+
+`StockCollectionPipeline`, em `src.extract.collector`, coordena as etapas sem substituir os módulos especializados:
+
+1. `extract()` consulta o adaptador de fonte ou lê um fixture JSON.
+2. A resposta bruta é preservada em `data/raw/` antes da validação.
+3. `transform()` valida o contrato e normaliza os dados para o snapshot público.
+4. `load()` grava atomicamente o snapshot e o status da coleta.
+
+`run()` executa essas etapas em ordem e registra falhas sem substituir o último snapshot válido. A função `collect()` permanece como entrada compatível para os chamadores existentes.
+
 ### Fontes adicionais
 
 `src.extract.sources` define o contrato mínimo de uma fonte de estoque (`source_id`, `display_name` e `fetch`). O `VivverSource` é a implementação padrão e a única fonte de estoque publicada pelo MVP. Esse ponto de extensão não consolida dados de fontes diferentes: cada adaptador futuro deve produzir uma resposta que passe pela validação do snapshot e preservar sua própria origem e horário de coleta.
@@ -39,9 +50,9 @@ Cadastros de unidades, mapas, compras públicas ou confirmações manuais podem 
 - `GRID_URL`: recurso consultado para os dados de estoque;
 - `MUNICIPIO`: `3143302`.
 
-`fetch_stock(config)` cria uma `requests.Session`, define os cabeçalhos `User-Agent` e `Accept`, e faz uma requisição `GET` para `stock_page` com timeout de 30 segundos. Do HTML retornado, `_csrf_from_html` tenta localizar o campo `authenticity_token` com duas expressões regulares. Em seguida, faz outro `GET` para `grid_url` com o município e os parâmetros de filtros vazios definidos no código; o token é incluído somente quando encontrado.
+`fetch_stock(config)` cria uma `requests.Session`, define os cabeçalhos `User-Agent` e `Accept`, e faz as requisições para `stock_page` e `grid_url` com timeout de 20 segundos por chamada. Do HTML retornado, `_csrf_from_html` tenta localizar o campo `authenticity_token` com duas expressões regulares. Em seguida, faz outro `GET` para `grid_url` com o município e os parâmetros de filtros vazios definidos no código; o token é incluído somente quando encontrado.
 
-O retorno é um `ExtractedResponse` com conteúdo textual, `Content-Type`, URL final, horário UTC da coleta e código HTTP. As duas chamadas usam `raise_for_status()`: respostas HTTP de erro levantam a exceção do `requests`. Não há retry, tratamento de exceções nem registro estruturado de falhas implementados no módulo.
+O retorno é um `ExtractedResponse` imutável com conteúdo textual, `Content-Type`, URL final, horário UTC da coleta e código HTTP. As duas chamadas usam `raise_for_status()`: erros de conexão são repetidos até três tentativas e respostas HTTP 429 ou 5xx usam espera limitada antes de uma nova tentativa. Se as tentativas se esgotarem, a exceção é propagada para `StockCollectionPipeline.run()`, que registra o status de falha.
 
 ### Armazenamento Raw
 
@@ -205,6 +216,17 @@ O log tem `arquivo_entrada`, `status` e `metricas`. As métricas incluem contage
 
 O nome `load.py` nessa rota significa escrita de arquivos processados. Ele não realiza carga em banco, serviço ou outro destino externo.
 
+## Interface web e apresentação
+
+A interface não altera a pipeline de aquisição, transformação ou validação. Ela apenas lê uma captura pública já validada:
+
+- `src.snapshot_store.SnapshotRepository` escolhe a captura válida mais recente em `data/raw/`, aplica a proteção contra quedas bruscas de volume, usa `data/processed/public_snapshot.json` como fallback e mantém um cache em memória enquanto a assinatura de modificação dos arquivos não muda. Isso evita reler e revalidar o JSON grande a cada requisição.
+- `src.presentation.build_home_context` converte o snapshot em um modelo de tela imutável: resumo de disponibilidade por medicamento, unidades ordenadas com quantidade positiva primeiro, filtros ativos, opções de ordenação e janela de paginação. A função não modifica o snapshot validado.
+- `src.web` expõe a página em `/` e as sugestões de medicamentos em `/api/medicines`. A busca ignora acentos e maiúsculas. Com uma busca ativa, o filtro de unidades relaciona apenas unidades com quantidade positiva nos resultados correspondentes; sem busca, relaciona todas as unidades.
+- O template usa macros em `src/template/_macros.html` para cartões, linhas de catálogo, paginação e itens do diretório. O JavaScript em `src/static/search.js` implementa o combobox acessível, a atualização automática dos filtros e as interações do mapa. O mapa continua restrito aos pontos documentados em `src/static/unit_locations.json`.
+
+O diretório de unidades fica recolhido por padrão e pode ser filtrado pela mesma pesquisa do mapa. A opção “Somente com pino” limita a lista às unidades com coordenadas documentadas; as demais continuam disponíveis para pesquisa externa. A interface não transforma ausência de pino em indisponibilidade e não confirma estoque atual.
+
 ## Validações da transformação dimensional
 
 | O que é validado | Por que é importante | O que acontece quando falha |
@@ -225,7 +247,7 @@ Quando há regras acumuladas inválidas, a exceção lista no máximo 20 mensage
 
 `requirements.txt` declara `requests`, `pandas`, `beautifulsoup4`, `lxml` e `pyarrow`. `requests` atende à coleta; `pandas`, Beautiful Soup e lxml são usados na rota tabular; `pyarrow` permite a escrita Parquet nessa rota. `transform.py` usa somente módulos da biblioteca padrão.
 
-O teste em `tests/test_normalize.py` cobre a leitura de tabela HTML, a preservação de identificadores com zero à esquerda, a interpretação de `1.250` como 1250 e a remoção de duplicatas exatas. Não há teste automatizado da transformação dimensional em `src.transform.transform` no repositório atual.
+O teste em `tests/test_normalize.py` cobre a leitura de tabela HTML, a preservação de identificadores com zero à esquerda, a interpretação de `1.250` como 1250 e a remoção de duplicatas exatas. `tests/test_mvp.py` cobre validação do snapshot, coleta, seleção de capturas, diagnóstico, busca, filtros, ordenação, paginação, cache da interface e mapa. Não há teste automatizado da transformação dimensional em `src.transform.transform` no repositório atual.
 
 ## Estado atual e futuras evoluções
 

@@ -5,7 +5,9 @@ from pathlib import Path
 
 import pytest
 
-from src.extract.collector import collect
+from src.extract.collector import StockCollectionPipeline, collect
+from src.config import Config
+from src.snapshot_store import SnapshotRepository
 from src.transform.snapshot import SnapshotValidationError, normalize_stock
 from src.diagnostics import diagnose
 from src.web import _raw_collection_time, create_app
@@ -57,7 +59,11 @@ def test_collection_publishes_fixture_with_demo_label_and_status(tmp_path):
     status_path = tmp_path / "collection_status.json"
     raw_dir = tmp_path / "raw"
 
-    snapshot = collect(FIXTURE, snapshot_path, status_path, raw_dir)
+    snapshot = StockCollectionPipeline(
+        snapshot_path=snapshot_path,
+        status_path=status_path,
+        raw_dir=raw_dir,
+    ).run(FIXTURE)
 
     status = json.loads(status_path.read_text(encoding="utf-8"))
     assert snapshot["metadata"]["source"] == "Fixture local de demonstração"
@@ -96,22 +102,25 @@ def test_public_search_filters_medicines_and_units_accent_insensitively(tmp_path
     )
     snapshot_path = tmp_path / "snapshot.json"
     snapshot_path.write_text(json.dumps(snapshot, ensure_ascii=False), encoding="utf-8")
-    client = create_app(snapshot_path, tmp_path / "status.json").test_client()
+    client = create_app(snapshot_path, tmp_path / "status.json", tmp_path / "raw").test_client()
 
     response = client.get("/?q=dipirona&unidade=1")
     page = response.get_data(as_text=True)
+    results_html = page.split('<section class="unit-map-section"')[0]
 
     assert response.status_code == 200
     assert "DIPIRONA SÓDICA 500 MG" in page
     assert "UBS São Judas" in page
-    assert "UBS Maracanã" not in page
-    assert "12 COMPRIMIDO na consulta" in page
+    assert "UBS Maracanã" not in results_html
+    assert ">12<" in page
+    assert "COMPRIMIDO" in page
+    assert "na consulta" in page
     assert "tel:3822114461" in page
     assert "não informa quando" in page
-    assert "não confirmam o estoque" in page
+    assert "não confirma disponibilidade" in page
 
 
-def test_header_and_search_card_use_concise_independent_project_copy(tmp_path):
+def test_header_and_search_card_keep_only_relevant_project_copy(tmp_path):
     snapshot = normalize_stock(
         FIXTURE.read_text(encoding="utf-8"),
         "https://source.example/stock",
@@ -119,19 +128,39 @@ def test_header_and_search_card_use_concise_independent_project_copy(tmp_path):
     )
     snapshot_path = tmp_path / "snapshot.json"
     snapshot_path.write_text(json.dumps(snapshot, ensure_ascii=False), encoding="utf-8")
-    client = create_app(snapshot_path, tmp_path / "status.json").test_client()
+    client = create_app(snapshot_path, tmp_path / "status.json", tmp_path / "raw").test_client()
 
     page = client.get("/").get_data(as_text=True)
 
-    assert "Projeto de extensão · Afya Montes Claros" in page
-    assert "Consultar fonte oficial" in page
-    assert "Buscar medicamento" in page
+    header = page.split("</header>", maxsplit=1)[0]
+    assert "Projeto de extensão" not in page
+    assert "Consulta pública · Montes Claros, MG" not in page
+    assert "Montes Claros" not in header
+    assert "Conferir fonte oficial" in header
+    assert page.count("Conferir fonte oficial") == 1
+    assert "<footer" not in page
+    assert "Buscar medicamento" not in header
     assert "Digite o nome do medicamento" in page
     assert "Você pode digitar o nome completo ou apenas uma parte." in page
     assert "Filtrar por unidade" in page
-    assert '<details class="unit-filter">' in page
+    assert 'id="unit-search"' in page
+    assert 'class="search-filters"' in page
     assert "O que você está procurando?" not in page
     assert "As sugestões aparecem a partir de 2 letras" not in page
+    assert 'rel="icon" type="image/svg+xml"' in page
+
+
+def test_project_favicon_is_served(tmp_path):
+    client = create_app(
+        tmp_path / "missing_snapshot.json",
+        tmp_path / "status.json",
+        tmp_path / "raw",
+    ).test_client()
+
+    response = client.get("/static/medi-moc-logo.svg")
+
+    assert response.status_code == 200
+    assert "image/svg+xml" in response.content_type
 
 
 def test_medicine_autocomplete_returns_accent_insensitive_suggestions(tmp_path):
@@ -142,7 +171,7 @@ def test_medicine_autocomplete_returns_accent_insensitive_suggestions(tmp_path):
     )
     snapshot_path = tmp_path / "snapshot.json"
     snapshot_path.write_text(json.dumps(snapshot, ensure_ascii=False), encoding="utf-8")
-    client = create_app(snapshot_path, tmp_path / "status.json").test_client()
+    client = create_app(snapshot_path, tmp_path / "status.json", tmp_path / "raw").test_client()
 
     response = client.get("/api/medicines?q=dipir")
 
@@ -158,16 +187,128 @@ def test_unit_dropdown_filters_to_selected_unit_and_can_search_without_medicine(
     )
     snapshot_path = tmp_path / "snapshot.json"
     snapshot_path.write_text(json.dumps(snapshot, ensure_ascii=False), encoding="utf-8")
-    client = create_app(snapshot_path, tmp_path / "status.json").test_client()
+    client = create_app(snapshot_path, tmp_path / "status.json", tmp_path / "raw").test_client()
 
     filtered = client.get("/?q=dipirona&unidade=1").get_data(as_text=True)
     unit_only = client.get("/?unidade=2").get_data(as_text=True)
+    filtered_results = filtered.split('<section class="unit-map-section"')[0]
 
     assert 'value="1" selected' in filtered
     assert "UBS São Judas" in filtered
-    assert "UBS Maracanã" not in filtered
+    assert "UBS Maracanã" not in filtered_results
     assert "DIPIRONA SÓDICA 500 MG" in unit_only
     assert "PARACETAMOL 750 MG" not in unit_only
+
+
+def test_medicine_card_orders_available_units_first_and_summarizes_availability(tmp_path):
+    snapshot = normalize_stock(
+        FIXTURE.read_text(encoding="utf-8"),
+        "https://source.example/stock",
+        "2026-09-30T12:00:00+00:00",
+    )
+    snapshot_path = tmp_path / "snapshot.json"
+    snapshot_path.write_text(json.dumps(snapshot, ensure_ascii=False), encoding="utf-8")
+    client = create_app(snapshot_path, tmp_path / "status.json", tmp_path / "raw").test_client()
+
+    page = client.get("/?q=dipirona").get_data(as_text=True)
+    results = page.split('<section class="unit-map-section"')[0]
+
+    assert "Com quantidade em 1 de 2 unidades" in results
+    assert results.index("UBS São Judas") < results.index("UBS Maracanã")
+    assert "Sem quantidade registrada" in results
+    assert "Unidades com quantidade registrada aparecem primeiro." in results
+
+
+def test_selected_unit_without_positive_quantity_stays_visible_in_filter(tmp_path):
+    snapshot = normalize_stock(
+        FIXTURE.read_text(encoding="utf-8"),
+        "https://source.example/stock",
+        "2026-09-30T12:00:00+00:00",
+    )
+    snapshot_path = tmp_path / "snapshot.json"
+    snapshot_path.write_text(json.dumps(snapshot, ensure_ascii=False), encoding="utf-8")
+    client = create_app(snapshot_path, tmp_path / "status.json", tmp_path / "raw").test_client()
+
+    page = client.get("/?q=dipirona&unidade=2").get_data(as_text=True)
+
+    assert '<option value="2" selected>UBS Maracanã</option>' in page
+    assert "Sem quantidade registrada" in page
+
+
+def test_catalog_can_be_sorted_by_availability_or_name(tmp_path):
+    payload = [
+        {
+            "id_produto": 1,
+            "nomproduto": "ZETA COM DUAS UNIDADES",
+            "unidade_fornecimento": "COMPRIMIDO",
+            "qdeestoque": "2.0",
+            "estoque_unidade": [
+                {"codunidade": 1, "nomfantasia": "UBS Centro", "numtelefone": "38 0000-0000", "endereco_unidade": "Rua A, 1", "qdeestoque": 1},
+                {"codunidade": 2, "nomfantasia": "UBS Bairro", "numtelefone": "38 0000-0001", "endereco_unidade": "Rua B, 2", "qdeestoque": 1},
+            ],
+        },
+        {
+            "id_produto": 2,
+            "nomproduto": "ALFA COM UMA UNIDADE",
+            "unidade_fornecimento": "COMPRIMIDO",
+            "qdeestoque": "1.0",
+            "estoque_unidade": [
+                {"codunidade": 1, "nomfantasia": "UBS Centro", "numtelefone": "38 0000-0000", "endereco_unidade": "Rua A, 1", "qdeestoque": 1},
+                {"codunidade": 2, "nomfantasia": "UBS Bairro", "numtelefone": "38 0000-0001", "endereco_unidade": "Rua B, 2", "qdeestoque": 0},
+            ],
+        },
+        {
+            "id_produto": 3,
+            "nomproduto": "BETA SEM QUANTIDADE",
+            "unidade_fornecimento": "COMPRIMIDO",
+            "qdeestoque": "0.0",
+            "estoque_unidade": [
+                {"codunidade": 1, "nomfantasia": "UBS Centro", "numtelefone": "38 0000-0000", "endereco_unidade": "Rua A, 1", "qdeestoque": 0},
+            ],
+        },
+    ]
+    snapshot = normalize_stock(
+        json.dumps(payload, ensure_ascii=False),
+        "https://source.example/stock",
+        "2026-09-30T12:00:00+00:00",
+    )
+    snapshot_path = tmp_path / "snapshot.json"
+    snapshot_path.write_text(json.dumps(snapshot, ensure_ascii=False), encoding="utf-8")
+    client = create_app(snapshot_path, tmp_path / "status.json", tmp_path / "raw").test_client()
+
+    by_availability = client.get("/?catalogo=1&ordem=disponibilidade").get_data(as_text=True)
+    by_name = client.get("/?catalogo=1&ordem=nome").get_data(as_text=True)
+
+    assert by_availability.index("ZETA COM DUAS UNIDADES") < by_availability.index("ALFA COM UMA UNIDADE")
+    assert by_availability.index("ALFA COM UMA UNIDADE") < by_availability.index("BETA SEM QUANTIDADE")
+    assert by_name.index("ALFA COM UMA UNIDADE") < by_name.index("BETA SEM QUANTIDADE")
+    assert by_name.index("BETA SEM QUANTIDADE") < by_name.index("ZETA COM DUAS UNIDADES")
+    assert '<option value="disponibilidade" selected>' in by_availability
+
+
+def test_public_page_links_to_official_source_without_session_token(tmp_path):
+    snapshot = normalize_stock(
+        FIXTURE.read_text(encoding="utf-8"),
+        "https://source.example/grid?authenticity_token=segredo",
+        "2026-09-30T12:00:00+00:00",
+    )
+    snapshot_path = tmp_path / "snapshot.json"
+    status_path = tmp_path / "status.json"
+    snapshot_path.write_text(json.dumps(snapshot, ensure_ascii=False), encoding="utf-8")
+    status_path.write_text(
+        json.dumps({"source_url": "https://source.example/grid?authenticity_token=segredo"}),
+        encoding="utf-8",
+    )
+    client = create_app(snapshot_path, status_path, tmp_path / "raw").test_client()
+
+    page = client.get("/").get_data(as_text=True)
+    report = diagnose(tmp_path / "raw", snapshot_path, status_path)
+
+    assert "authenticity_token" not in page
+    assert "segredo" not in page
+    assert Config().stock_page in page
+    assert "segredo" not in report
+    assert "https://source.example/grid" in report
 
 
 def test_public_search_shows_failed_update_warning(tmp_path):
@@ -183,12 +324,49 @@ def test_public_search_shows_failed_update_warning(tmp_path):
         json.dumps({"last_attempt_status": "failed", "last_error": "Timeout de rede"}),
         encoding="utf-8",
     )
-    client = create_app(snapshot_path, status_path).test_client()
+    client = create_app(snapshot_path, status_path, tmp_path / "raw").test_client()
 
     response = client.get("/")
 
     assert response.status_code == 200
     assert "A última tentativa de atualização falhou." in response.get_data(as_text=True)
+
+
+def test_no_results_offers_clear_filters_and_catalog_actions(tmp_path):
+    snapshot = normalize_stock(
+        FIXTURE.read_text(encoding="utf-8"),
+        "https://source.example/stock",
+        "2026-09-30T12:00:00+00:00",
+    )
+    snapshot_path = tmp_path / "snapshot.json"
+    snapshot_path.write_text(json.dumps(snapshot, ensure_ascii=False), encoding="utf-8")
+    client = create_app(snapshot_path, tmp_path / "status.json", tmp_path / "raw").test_client()
+
+    page = client.get("/?q=medicamento-inexistente").get_data(as_text=True)
+
+    assert "Não encontramos resultados" in page
+    assert "Tente outra forma de busca" in page
+    assert "Limpar filtros" in page
+    assert "Ver catálogo completo" in page
+
+
+def test_snapshot_repository_reuses_bundle_until_files_change(tmp_path):
+    snapshot = normalize_stock(
+        FIXTURE.read_text(encoding="utf-8"),
+        "https://source.example/stock",
+        "2026-09-30T12:00:00+00:00",
+    )
+    snapshot_path = tmp_path / "snapshot.json"
+    snapshot_path.write_text(json.dumps(snapshot, ensure_ascii=False), encoding="utf-8")
+    repository = SnapshotRepository(snapshot_path, tmp_path / "status.json", tmp_path / "raw")
+
+    first = repository.load()
+    second = repository.load()
+    assert second is first
+
+    snapshot_path.write_text(json.dumps(snapshot, ensure_ascii=False) + "\n", encoding="utf-8")
+    third = repository.load()
+    assert third is not first
 
 
 def test_public_page_and_autocomplete_read_raw_txt_without_snapshot(tmp_path):
@@ -269,7 +447,7 @@ def test_timestamped_capture_marked_as_fixture_is_ignored_for_real_capture(tmp_p
 
     assert "215" in page
     assert "VÁLIDA estruturalmente (SELECIONADA pela interface): vivver_estoque_2026-09-22T131443016020+0000.txt" in report
-    assert "VÁLIDA estruturalmente (não selecionada: volume muito menor que a captura maior; origem precisa ser confirmada): vivver_estoque_2026-09-30T133518192183+0000.txt" in report
+    assert "IGNORADA (captura de demonstração): vivver_estoque_2026-09-30T133518192183+0000.txt" in report
     assert "215 medicamentos" in report
 
 
@@ -325,7 +503,7 @@ def test_catalog_lists_all_products_in_pages(tmp_path):
     )
     snapshot_path = tmp_path / "snapshot.json"
     snapshot_path.write_text(json.dumps(snapshot, ensure_ascii=False), encoding="utf-8")
-    client = create_app(snapshot_path, tmp_path / "status.json").test_client()
+    client = create_app(snapshot_path, tmp_path / "status.json", tmp_path / "raw").test_client()
 
     first_page = client.get("/?catalogo=1&pagina=1").get_data(as_text=True)
     second_page = client.get("/?catalogo=1&pagina=2").get_data(as_text=True)
@@ -345,7 +523,7 @@ def test_public_page_includes_unit_map_and_location_directory(tmp_path):
     )
     snapshot_path = tmp_path / "snapshot.json"
     snapshot_path.write_text(json.dumps(snapshot, ensure_ascii=False), encoding="utf-8")
-    client = create_app(snapshot_path, tmp_path / "status.json").test_client()
+    client = create_app(snapshot_path, tmp_path / "status.json", tmp_path / "raw").test_client()
 
     page = client.get("/").get_data(as_text=True)
 

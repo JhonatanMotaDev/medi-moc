@@ -2,10 +2,23 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from urllib.parse import urlsplit, urlunsplit
 
 from .config import COLLECTION_STATUS, PUBLIC_SNAPSHOT, RAW_DIR, Config
+from .snapshot_store import is_fixture_capture, raw_collection_time, raw_sort_time
 from .transform.snapshot import normalize_stock
-from .web import _is_fixture_capture, _raw_collection_time, _raw_sort_time
+
+
+def _redact_url(value: object) -> str:
+    """Hide query strings, which may contain session or authenticity tokens."""
+    text = str(value)
+    try:
+        parts = urlsplit(text)
+    except ValueError:
+        return text
+    if not parts.scheme or not parts.netloc:
+        return text
+    return urlunsplit((parts.scheme, parts.netloc, parts.path, "", parts.fragment))
 
 
 def _snapshot_counts(snapshot: dict) -> tuple[int, int, int]:
@@ -31,12 +44,12 @@ def diagnose(raw_dir: Path = RAW_DIR, snapshot_path: Path = PUBLIC_SNAPSHOT,
     lines = ["Diagnóstico local da fonte usada pela interface"]
     status: dict = {}
     try:
-        parsed_status = json.loads(status_path.read_text(encoding="utf-8"))
+        parsed_status = json.loads(status_path.read_text(encoding="utf-8-sig"))
         if isinstance(parsed_status, dict):
             status = parsed_status
     except FileNotFoundError:
         lines.append(f"Status de coleta: ausente ({status_path})")
-    except (OSError, json.JSONDecodeError) as error:
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
         lines.append(f"Status de coleta: inválido ({error})")
 
     if status:
@@ -47,7 +60,7 @@ def diagnose(raw_dir: Path = RAW_DIR, snapshot_path: Path = PUBLIC_SNAPSHOT,
         )
         lines.append(
             f"Origem registrada: {status.get('source_type', 'não informada')} "
-            f"({status.get('source_url', 'URL não informada')})"
+            f"({_redact_url(status.get('source_url') or 'URL não informada')})"
         )
         if status.get("last_error"):
             lines.append(f"Erro da última tentativa: {status['last_error']}")
@@ -55,19 +68,19 @@ def diagnose(raw_dir: Path = RAW_DIR, snapshot_path: Path = PUBLIC_SNAPSHOT,
     candidates = []
     if raw_dir.exists():
         candidates = list(raw_dir.glob("vivver_estoque_*.txt"))
-    candidates.sort(key=_raw_sort_time, reverse=True)
+    candidates.sort(key=raw_sort_time, reverse=True)
     valid_snapshots: list[tuple[Path, dict]] = []
 
     lines.append(f"Capturas encontradas em {raw_dir}: {len(candidates)}")
     for candidate in candidates:
-        if _is_fixture_capture(candidate, status):
+        if is_fixture_capture(candidate, status):
             lines.append(f"- IGNORADA (captura de demonstração): {candidate.name}")
             continue
         try:
-            collected_at = _raw_collection_time(candidate)
+            collected_at = raw_collection_time(candidate)
             content = candidate.read_text(encoding="utf-8-sig")
             snapshot = normalize_stock(content, Config().stock_page, collected_at)
-        except (OSError, ValueError) as error:
+        except (OSError, UnicodeDecodeError, TypeError, ValueError) as error:
             lines.append(f"- INVÁLIDA: {candidate.name}: {error}")
             continue
 
@@ -79,7 +92,7 @@ def diagnose(raw_dir: Path = RAW_DIR, snapshot_path: Path = PUBLIC_SNAPSHOT,
             valid_snapshots,
             key=lambda item: (
                 item[1]["metadata"]["product_count"],
-                _raw_sort_time(item[0]),
+                raw_sort_time(item[0]),
             ),
         )
         newest_count = newest_snapshot["metadata"]["product_count"]
@@ -102,7 +115,7 @@ def diagnose(raw_dir: Path = RAW_DIR, snapshot_path: Path = PUBLIC_SNAPSHOT,
                     "origem precisa ser confirmada"
                 )
             else:
-                selection = "válida estruturalmente, mas não selecionada"
+                selection = "não selecionada"
             lines.append(
                 f"- VÁLIDA estruturalmente ({selection}): {candidate.name} — "
                 f"{product_count} medicamentos, {row_count} registros por unidade, "
@@ -127,7 +140,7 @@ def diagnose(raw_dir: Path = RAW_DIR, snapshot_path: Path = PUBLIC_SNAPSHOT,
     else:
         lines.append("Nenhuma captura raw válida encontrada; a interface tenta o snapshot JSON.")
         try:
-            snapshot = json.loads(snapshot_path.read_text(encoding="utf-8"))
+            snapshot = json.loads(snapshot_path.read_text(encoding="utf-8-sig"))
             counts = _snapshot_counts(snapshot)
             lines.append(
                 f"Snapshot: válido — {counts[0]} medicamentos, "
@@ -135,7 +148,7 @@ def diagnose(raw_dir: Path = RAW_DIR, snapshot_path: Path = PUBLIC_SNAPSHOT,
             )
         except FileNotFoundError:
             lines.append(f"Snapshot: ausente ({snapshot_path})")
-        except (OSError, json.JSONDecodeError, TypeError) as error:
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError, TypeError) as error:
             lines.append(f"Snapshot: inválido ({error})")
 
     if status.get("raw_capture"):

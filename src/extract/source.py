@@ -11,8 +11,18 @@ import requests
 from ..config import Config
 
 
-@dataclass
+@dataclass(frozen=True)
 class ExtractedResponse:
+    """Raw response and collection metadata returned by a stock source.
+
+    Attributes:
+        content: Response body before parsing or normalization.
+        content_type: MIME type reported by the source.
+        url: Final URL used to retrieve the response.
+        collected_at: UTC timestamp recorded when the response was received.
+        status_code: HTTP status code, or 200 for a local fixture.
+    """
+
     content: str
     content_type: str
     url: str
